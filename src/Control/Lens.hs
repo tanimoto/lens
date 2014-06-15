@@ -1,16 +1,12 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE LiberalTypeSynonyms #-}
-{-# LANGUAGE FlexibleContexts #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Lens
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
--- Stability   :  provisional
--- Portability :  Rank2Types
+-- Stability   :  experimental
+-- Portability :  non-portable
 --
 -- Usage:
 --
@@ -25,7 +21,7 @@
 -- This defines the following lenses:
 --
 -- @
--- fooArgs :: 'Simple' 'Lens' (Foo a) ['String']
+-- fooArgs :: 'Lens'' (Foo a) ['String']
 -- fooValue :: 'Lens' (Foo a) (Foo b) a b
 -- @
 --
@@ -41,24 +37,26 @@
 --
 -- <http://github.com/ekmett/lens/wiki>
 --
--- <<http://github.com/ekmett/lens/wiki/images/Hierarchy-3.7.png>>
+-- <<Hierarchy.png>>
 ----------------------------------------------------------------------------
 module Control.Lens
   ( module Control.Lens.Action
-  , module Control.Lens.Combinators
+  , module Control.Lens.At
+  , module Control.Lens.Cons
+  , module Control.Lens.Each
+  , module Control.Lens.Empty
+  , module Control.Lens.Equality
   , module Control.Lens.Fold
   , module Control.Lens.Getter
   , module Control.Lens.Indexed
-  , module Control.Lens.IndexedFold
-  , module Control.Lens.IndexedGetter
-  , module Control.Lens.IndexedLens
-  , module Control.Lens.IndexedSetter
-  , module Control.Lens.IndexedTraversal
   , module Control.Lens.Iso
+  , module Control.Lens.Lens
+  , module Control.Lens.Level
   , module Control.Lens.Loupe
   , module Control.Lens.Plated
   , module Control.Lens.Prism
-  , module Control.Lens.Representable
+  , module Control.Lens.Reified
+  , module Control.Lens.Review
   , module Control.Lens.Setter
 #ifndef DISABLE_TEMPLATE_HASKELL
   , module Control.Lens.TH
@@ -66,27 +64,27 @@ module Control.Lens
   , module Control.Lens.Traversal
   , module Control.Lens.Tuple
   , module Control.Lens.Type
-  , module Control.Lens.WithIndex
   , module Control.Lens.Wrapped
-  , module Control.Lens.Zipper
   , module Control.Lens.Zoom
   ) where
 
 import Control.Lens.Action
-import Control.Lens.Combinators
+import Control.Lens.At
+import Control.Lens.Cons
+import Control.Lens.Each
+import Control.Lens.Empty
+import Control.Lens.Equality
 import Control.Lens.Fold
 import Control.Lens.Getter
 import Control.Lens.Indexed
-import Control.Lens.IndexedFold
-import Control.Lens.IndexedGetter
-import Control.Lens.IndexedLens
-import Control.Lens.IndexedSetter
-import Control.Lens.IndexedTraversal
 import Control.Lens.Iso
+import Control.Lens.Lens
+import Control.Lens.Level
 import Control.Lens.Loupe
 import Control.Lens.Plated
 import Control.Lens.Prism
-import Control.Lens.Representable
+import Control.Lens.Reified
+import Control.Lens.Review
 import Control.Lens.Setter
 #ifndef DISABLE_TEMPLATE_HASKELL
 import Control.Lens.TH
@@ -94,7 +92,9 @@ import Control.Lens.TH
 import Control.Lens.Traversal
 import Control.Lens.Tuple
 import Control.Lens.Type
-import Control.Lens.WithIndex
 import Control.Lens.Wrapped
-import Control.Lens.Zipper
 import Control.Lens.Zoom
+
+#ifdef HLINT
+{-# ANN module "HLint: ignore Use import/export shortcut" #-}
+#endif

@@ -1,10 +1,9 @@
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Sequence.Lens
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  experimental
@@ -12,11 +11,9 @@
 --
 ----------------------------------------------------------------------------
 module Data.Sequence.Lens
-  ( ordinal
-  , viewL, viewR
-  , _head, _tail
-  , _last, _init
+  ( viewL, viewR
   , sliced, slicedTo, slicedFrom
+  , seqOf
   ) where
 
 import Control.Applicative
@@ -29,21 +26,6 @@ import Data.Sequence as Seq
 -- >>> import Debug.SimpleReflect.Vars as Vars hiding (f,g)
 -- >>> let f :: Expr -> Expr; f = Debug.SimpleReflect.Vars.f
 -- >>> let g :: Expr -> Expr; g = Debug.SimpleReflect.Vars.g
-
--- | A 'Lens' that can access the @n@th element of a 'Seq'.
---
--- >>> Seq.fromList [a,b,c,d] & ordinal 2 %~ f
--- fromList [a,b,f c,d]
---
--- >>> Seq.fromList [a,b,c,d] & ordinal 2 .~ e
--- fromList [a,b,e,d]
---
--- >>> Seq.fromList [a,b,c,d] ^. ordinal 2
--- c
---
--- *NB:* This is only a legal lens if there is already such an element!
-ordinal :: Int -> SimpleIndexedLens Int (Seq a) a
-ordinal i = indexed $ \ f m -> f i (index m i) <&> \a -> update i a m
 
 -- * Sequence isomorphisms
 
@@ -60,13 +42,12 @@ ordinal i = indexed $ \ f m -> f i (index m i) <&> \a -> update i a m
 -- >>> EmptyL ^. from viewL
 -- fromList []
 --
--- >>> from viewL ^$ a :< fromList [b,c]
+-- >>> review viewL $ a :< fromList [b,c]
 -- fromList [a,b,c]
---
 viewL :: Iso (Seq a) (Seq b) (ViewL a) (ViewL b)
 viewL = iso viewl $ \ xs -> case xs of
   EmptyL ->  mempty
-  a :< as -> a <| as
+  a :< as -> a Seq.<| as
 {-# INLINE viewL #-}
 
 -- | A 'Seq' is isomorphic to a 'ViewR'
@@ -82,79 +63,13 @@ viewL = iso viewl $ \ xs -> case xs of
 -- >>> EmptyR ^. from viewR
 -- fromList []
 --
--- >>> from viewR ^$ fromList [a,b] :> c
+-- >>> review viewR $ fromList [a,b] :> c
 -- fromList [a,b,c]
 viewR :: Iso (Seq a) (Seq b) (ViewR a) (ViewR b)
 viewR = iso viewr $ \xs -> case xs of
   EmptyR  -> mempty
-  as :> a -> as |> a
+  as :> a -> as Seq.|> a
 {-# INLINE viewR #-}
-
--- * Traversals
-
--- | Traverse the head of a 'Seq'
---
--- >>> fromList [a,b,c,d] & _head %~ f
--- fromList [f a,b,c,d]
---
--- >>> fromList [] ^? _head
--- Nothing
---
--- >>> fromList [a,b,c,d] ^? _head
--- Just a
-_head :: SimpleIndexedTraversal Int (Seq a) a
-_head = indexed $ \f m -> case viewl m of
-  a :< as -> (<| as) <$> f (0::Int) a
-  EmptyL  -> pure m
-{-# INLINE _head #-}
-
--- | Traverse the tail of a 'Seq'
---
--- >>> fromList [a,b] & _tail .~ fromList [c,d,e]
--- fromList [a,c,d,e]
---
--- >>> fromList [a,b,c] ^? _tail
--- Just (fromList [b,c])
---
--- >>> fromList [] ^? _tail
--- Nothing
-_tail :: SimpleTraversal (Seq a) (Seq a)
-_tail f m = case viewl m of
-  a :< as -> (a <|) <$> f as
-  EmptyL  -> pure m
-{-# INLINE _tail #-}
-
--- | Traverse the last element of a 'Seq'
---
--- >>> fromList [a,b,c,d] & _last %~ f
--- fromList [a,b,c,f d]
---
--- >>> fromList [a,b,c,d] ^? _last
--- Just d
---
--- >>> fromList [] ^? _last
--- Nothing
-_last :: SimpleIndexedTraversal Int (Seq a) a
-_last = indexed $ \f m ->  case viewr m of
-  as :> a -> (as |>) <$> f (Seq.length as) a
-  EmptyR  -> pure m
-{-# INLINE _last #-}
-
--- | Traverse all but the last element of a 'Seq'
---
--- >>> fromList [1,2,3] ^? _init
--- Just (fromList [1,2])
---
--- >>> fromList [a,b,c,d] & _init.traverse %~ f
--- fromList [f a,f b,f c,d]
---
--- >>> fromList [] & _init .~ fromList [a,b,c]
--- fromList []
-_init :: SimpleTraversal (Seq a) (Seq a)
-_init f m = case viewr m of
-  as :> a -> (|> a) <$> f as
-  EmptyR  -> pure m
-{-# INLINE _init #-}
 
 -- | Traverse the first @n@ elements of a 'Seq'
 --
@@ -166,9 +81,9 @@ _init f m = case viewr m of
 --
 -- >>> fromList [a,b,c,d,e] & slicedTo 10 .~ x
 -- fromList [x,x,x,x,x]
-slicedTo :: Int -> SimpleIndexedTraversal Int (Seq a) a
-slicedTo n = indexed $ \f m -> case Seq.splitAt n m of
-  (l,r) -> (>< r) <$> itraverse f l
+slicedTo :: Int -> IndexedTraversal' Int (Seq a) a
+slicedTo n f m = case Seq.splitAt n m of
+  (l,r) -> (>< r) <$> itraverse (indexed f) l
 {-# INLINE slicedTo #-}
 
 -- | Traverse all but the first @n@ elements of a 'Seq'
@@ -181,9 +96,9 @@ slicedTo n = indexed $ \f m -> case Seq.splitAt n m of
 --
 -- >>> fromList [a,b,c,d,e] & slicedFrom 10 .~ x
 -- fromList [a,b,c,d,e]
-slicedFrom :: Int -> SimpleIndexedTraversal Int (Seq a) a
-slicedFrom n = indexed $ \ f m -> case Seq.splitAt n m of
-  (l,r) -> (l ><) <$> itraverse (f . (+n)) r
+slicedFrom :: Int -> IndexedTraversal' Int (Seq a) a
+slicedFrom n f m = case Seq.splitAt n m of
+  (l,r) -> (l ><) <$> itraverse (indexed f . (+n)) r
 {-# INLINE slicedFrom #-}
 
 -- | Traverse all the elements numbered from @i@ to @j@ of a 'Seq'
@@ -196,8 +111,27 @@ slicedFrom n = indexed $ \ f m -> case Seq.splitAt n m of
 --
 -- >>> fromList [a,b,c,d,e] & sliced 1 3 .~ x
 -- fromList [a,x,x,b,e]
-sliced :: Int -> Int -> SimpleIndexedTraversal Int (Seq a) a
-sliced i j = indexed $ \ f s -> case Seq.splitAt i s of
+sliced :: Int -> Int -> IndexedTraversal' Int (Seq a) a
+sliced i j f s = case Seq.splitAt i s of
   (l,mr) -> case Seq.splitAt (j-i) mr of
-     (m, r) -> itraverse (f . (+i)) m <&> \n -> l >< n >< r
+     (m, r) -> itraverse (indexed f . (+i)) m <&> \n -> l >< n >< r
 {-# INLINE sliced #-}
+
+-- | Construct a 'Seq' from a 'Getter', 'Control.Lens.Fold.Fold', 'Control.Lens.Traversal.Traversal', 'Control.Lens.Lens.Lens' or 'Control.Lens.Iso.Iso'.
+--
+-- >>> seqOf folded ["hello","world"]
+-- fromList ["hello","world"]
+--
+-- >>> seqOf (folded._2) [("hello",1),("world",2),("!!!",3)]
+-- fromList [1,2,3]
+--
+-- @
+-- 'seqOf' :: 'Getter' s a     -> s -> 'Seq' a
+-- 'seqOf' :: 'Fold' s a       -> s -> 'Seq' a
+-- 'seqOf' :: 'Iso'' s a       -> s -> 'Seq' a
+-- 'seqOf' :: 'Lens'' s a      -> s -> 'Seq' a
+-- 'seqOf' :: 'Traversal'' s a -> s -> 'Seq' a
+-- @
+seqOf :: Getting (Seq a) s a -> s -> Seq a
+seqOf l = views l Seq.singleton
+{-# INLINE seqOf #-}

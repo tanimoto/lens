@@ -1,21 +1,23 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE Rank2Types #-}
+#ifndef HLINT
 {-# LANGUAGE UnboxedTuples #-}
+#endif
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE LiberalTypeSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs #-}
 #ifdef TRUSTWORTHY
 {-# LANGUAGE Trustworthy #-}
 #endif
+{-# OPTIONS_GHC -fno-full-laziness #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Data.Lens
--- Copyright   :  (C) 2012 Edward Kmett, (C) 2006-2012 Neil Mitchell
+-- Copyright   :  (C) 2012-2014 Edward Kmett, (C) 2006-2012 Neil Mitchell
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  experimental
@@ -45,21 +47,15 @@ module Data.Data.Lens
 
 import           Control.Applicative
 import           Control.Exception as E
-import           Control.Lens.Getter
-import           Control.Lens.Indexed
-import           Control.Lens.IndexedLens
-import           Control.Lens.IndexedSetter
-import           Control.Lens.IndexedTraversal
-import           Control.Lens.Internal
+import           Control.Lens.Internal.Context
+import           Control.Lens.Internal.Indexed
+import           Control.Lens.Lens
 import           Control.Lens.Setter
 import           Control.Lens.Traversal
 import           Control.Lens.Type
 import           Data.Data
 import           GHC.IO
-import           Unsafe.Coerce as Unsafe
-
-#ifndef SAFE
-import           Control.Arrow ((&&&))
+import           Data.Maybe
 import           Data.Foldable
 import qualified Data.HashMap.Strict as M
 import           Data.HashMap.Strict (HashMap, (!))
@@ -68,9 +64,16 @@ import           Data.HashSet (HashSet)
 import           Data.IORef
 import           Data.Monoid
 import           GHC.Exts (realWorld#)
+
+#ifdef HLINT
+{-# ANN module "HLint: ignore Eta reduce" #-}
+{-# ANN module "HLint: ignore Use foldl" #-}
+{-# ANN module "HLint: ignore Reduce duplication" #-}
+{-# ANN module "HLint: ignore Unused LANGUAGE pragma" #-}
 #endif
 
 -- $setup
+-- >>> :set -XNoOverloadedStrings
 -- >>> import Control.Lens
 
 -------------------------------------------------------------------------------
@@ -84,6 +87,7 @@ import           GHC.Exts (realWorld#)
 -- This really belongs in @Data.Data@.
 gtraverse :: (Applicative f, Data a) => (forall d. Data d => d -> f d) -> a -> f a
 gtraverse f = gfoldl (\x y -> x <*> f y) pure
+{-# INLINE gtraverse #-}
 
 -------------------------------------------------------------------------------
 -- Naïve Traversal
@@ -92,14 +96,14 @@ gtraverse f = gfoldl (\x y -> x <*> f y) pure
 -- | Naïve 'Traversal' using 'Data'. This does not attempt to optimize the traversal.
 --
 -- This is primarily useful when the children are immediately obvious, and for benchmarking.
-tinplate :: (Data s, Typeable a) => Simple Traversal s a
+tinplate :: (Data s, Typeable a) => Traversal' s a
 tinplate f = gfoldl (step f) pure
 {-# INLINE tinplate #-}
 
-step :: (Applicative f, Typeable a, Data s) => (a -> f a) -> f (s -> r) -> s -> f r
-step f w s = w <*> case cast s of
-  Just a  -> unsafeCoerce <$> f a
-  Nothing -> tinplate f s
+step :: forall s a f r. (Applicative f, Typeable a, Data s) => (a -> f a) -> f (s -> r) -> s -> f r
+step f w s = w <*> case mightBe :: Maybe (Is s a) of
+  Just Data.Data.Lens.Refl -> f s
+  Nothing   -> tinplate f s
 {-# INLINE step #-}
 
 -------------------------------------------------------------------------------
@@ -111,33 +115,23 @@ step f w s = w <*> case cast s of
 -- of areas that cannot contain a value of type @a@.
 --
 -- This is 'uniplate' with a more liberal signature.
-template :: forall s a. (Data s, Typeable a) => Simple Traversal s a
-#ifdef SAFE
-template = tinplate
-#else
+template :: forall s a. (Data s, Typeable a) => Traversal' s a
 template = uniplateData (fromOracle answer) where
   answer = hitTest (undefined :: s) (undefined :: a)
-#endif
 {-# INLINE template #-}
 
 -- | Find descendants of type @a@ non-transitively, while avoiding computation of areas that cannot contain values of
 -- type @a@ using 'Data'.
 --
--- 'uniplate' is a useful default definition for 'Control.Plated.plate'
-uniplate :: Data a => Simple Traversal a a
+-- 'uniplate' is a useful default definition for 'Control.Lens.Plated.plate'
+uniplate :: Data a => Traversal' a a
 uniplate = template
 {-# INLINE uniplate #-}
 
 -- | 'biplate' performs like 'template', except when @s ~ a@, it returns itself and nothing else.
-biplate :: forall s a. (Data s, Typeable a) => Simple Traversal s a
-#ifdef SAFE
-biplate f s
-  | typeOf (undefined :: s) == typeOf (undefined :: a) = pure s
-  | otherwise                                          = template f s
-#else
+biplate :: forall s a. (Data s, Typeable a) => Traversal' s a
 biplate = biplateData (fromOracle answer) where
   answer = hitTest (undefined :: s) (undefined :: a)
-#endif
 {-# INLINE biplate #-}
 
 ------------------------------------------------------------------------------
@@ -152,7 +146,7 @@ instance Show (FieldException a) where
 
 instance Typeable a => Exception (FieldException a)
 
-lookupon :: Typeable a => SimpleLensLike (Indexing Mutator) s a -> (s -> a) -> s -> Maybe (Int, Context a a s)
+lookupon :: Typeable a => LensLike' (Indexing Identity) s a -> (s -> a) -> s -> Maybe (Int, Context a a s)
 lookupon l field s = case unsafePerformIO $ E.try $ evaluate $ field $ s & indexing l %@~ \i (a::a) -> E.throw (FieldException i a) of
   Right _ -> Nothing
   Left e -> case fromException e of
@@ -161,7 +155,7 @@ lookupon l field s = case unsafePerformIO $ E.try $ evaluate $ field $ s & index
 {-# INLINE lookupon #-}
 
 
--- | This automatically constructs a 'Simple' 'Traversal' from an function.
+-- | This automatically constructs a 'Traversal'' from an function.
 --
 -- >>> (2,4) & upon fst *~ 5
 -- (10,4)
@@ -192,15 +186,15 @@ lookupon l field s = case unsafePerformIO $ E.try $ evaluate $ field $ s & index
 --
 -- Second, the structure must not contain strict or unboxed fields of the same type that will be visited by 'Data'
 --
--- @'upon' :: ('Data' s, 'Data' a) => (s -> a) -> 'SimpleIndexedTraversal' [Int] s a@
-upon :: forall k f s a. (Indexable [Int] k, Applicative f, Data s, Data a) => (s -> a) -> k (a -> f a) (s -> f s)
-upon field = indexed $ \ f s -> case lookupon template field s of
+-- @'upon' :: ('Data' s, 'Data' a) => (s -> a) -> 'IndexedTraversal'' [Int] s a@
+upon :: forall p f s a. (Indexable [Int] p, Applicative f, Data s, Data a) => (s -> a) -> p a (f a) -> s -> f s
+upon field f s = case lookupon template field s of
   Nothing -> pure s
   Just (i, Context k0 a0) ->
     let
-      go :: [Int] -> SimpleTraversal s a -> (a -> s) -> a -> f s
+      go :: [Int] -> Traversal' s a -> (a -> s) -> a -> f s
       go is l k a = case lookupon (l.uniplate) field s of
-        Nothing                 -> k <$> f (reverse is) a
+        Nothing                 -> k <$> indexed f (reverse is) a
         Just (j, Context k' a') -> go (j:is) (l.elementOf uniplate j) k' a'
     in go [i] (elementOf template i) k0 a0
 {-# INLINE upon #-}
@@ -214,19 +208,19 @@ upon field = indexed $ \ f s -> case lookupon template field s of
 --
 -- >>> upon' (tail.tail) .~ [10,20] $ [1,2,3,4]
 -- [1,2,10,20]
-upon' :: forall s a. (Data s, Data a) => (s -> a) -> SimpleIndexedLens [Int] s a
-upon' field = indexed $ \ f s -> let
+upon' :: forall s a. (Data s, Data a) => (s -> a) -> IndexedLens' [Int] s a
+upon' field f s = let
     ~(isn, kn) = case lookupon template field s of
       Nothing -> (error "upon': no index, not a member", const s)
       Just (i, Context k0 _) -> go [i] (elementOf template i) k0
-    go :: [Int] -> SimpleTraversal s a -> (a -> s) -> ([Int], a -> s)
+    go :: [Int] -> Traversal' s a -> (a -> s) -> ([Int], a -> s)
     go is l k = case lookupon (l.uniplate) field s of
       Nothing                -> (reverse is, k)
       Just (j, Context k' _) -> go (j:is) (l.elementOf uniplate j) k'
-  in kn <$> f isn (field s)
+  in kn <$> indexed f isn (field s)
 {-# INLINE upon' #-}
 
--- | This automatically constructs a 'Simple' 'Traversal' from a field accessor.
+-- | This automatically constructs a 'Traversal'' from a field accessor.
 --
 -- The index of the 'Traversal' can be used as an offset into @'elementOf' ('indexing' 'template')@ or into the list
 -- returned by @'holesOf' 'template'@.
@@ -241,10 +235,10 @@ upon' field = indexed $ \ f s -> let
 -- [1,2,10,20]
 --
 -- When in doubt, use 'upon' instead.
-onceUpon :: forall s a. (Data s, Typeable a) => (s -> a) -> SimpleIndexedTraversal Int s a
-onceUpon field = indexed $ \f s -> case lookupon template field s of
-  Nothing -> pure s
-  Just (i, Context k a) -> k <$> f i a
+onceUpon :: forall s a. (Data s, Typeable a) => (s -> a) -> IndexedTraversal' Int s a
+onceUpon field f s = case lookupon template field s of
+  Nothing               -> pure s
+  Just (i, Context k a) -> k <$> indexed f i a
 {-# INLINE onceUpon #-}
 
 -- | This more trusting version of 'upon' uses your function directly as the getter for a 'Lens'.
@@ -262,15 +256,21 @@ onceUpon field = indexed $ \f s -> case lookupon template field s of
 -- @'elementOf' ('indexed' 'template')@ or into the list returned by @'holesOf' 'template'@.
 --
 -- When in doubt, use 'upon'' instead.
-onceUpon' :: forall s a. (Data s, Typeable a) => (s -> a) -> SimpleIndexedLens Int s a
-onceUpon' field = indexed $ \f s -> let
-    ~(i, Context k _) = case lookupon template field s of
-      Nothing -> error "upon': no index, not a member"
-      Just ip -> ip
-  in k <$> f i (field s)
+onceUpon' :: forall s a. (Data s, Typeable a) => (s -> a) -> IndexedLens' Int s a
+onceUpon' field f s = k <$> indexed f i (field s) where
+  ~(i, Context k _) = fromMaybe (error "upon': no index, not a member") (lookupon template field s)
 {-# INLINE onceUpon' #-}
 
-#ifndef SAFE
+-------------------------------------------------------------------------------
+-- Type equality
+-------------------------------------------------------------------------------
+
+data Is a b where
+  Refl :: Is a a
+
+mightBe :: (Typeable a, Typeable b) => Maybe (Is a b)
+mightBe = gcast Data.Data.Lens.Refl
+{-# INLINE mightBe #-}
 
 -------------------------------------------------------------------------------
 -- Data Box
@@ -293,6 +293,7 @@ sybChildren x
     gmapQ dataBox (fromConstr c `asTypeOf` x)
   | otherwise = []
   where dt = dataTypeOf x
+{-# INLINE sybChildren #-}
 
 -------------------------------------------------------------------------------
 -- HitMap
@@ -321,7 +322,7 @@ insertHitMap box hit = fixEq trans (populate box) `mappend` hit where
   trans :: HitMap -> HitMap
   trans m = M.map f m where
     f x = x `mappend` foldMap g x
-    g x = M.lookupDefault (hit ! x) x m
+    g x = fromMaybe (hit ! x) (M.lookup x m)
 
 fixEq :: Eq a => (a -> a) -> a -> a
 fixEq f = go where
@@ -330,11 +331,13 @@ fixEq f = go where
        where x' = f x
 {-# INLINE fixEq #-}
 
+#ifndef HLINT
 -- | inlineable 'unsafePerformIO'
 inlinePerformIO :: IO a -> a
 inlinePerformIO (IO m) = case m realWorld# of
   (# _, r #) -> r
 {-# INLINE inlinePerformIO #-}
+#endif
 
 -------------------------------------------------------------------------------
 -- Cache
@@ -372,61 +375,49 @@ readCacheHitMap b@(DataBox kb _) = inlinePerformIO $
 -- Answers
 -------------------------------------------------------------------------------
 
-data Answer a
-  = Hit a
+data Answer b a
+  = b ~ a => Hit a
   | Follow
   | Miss
-  deriving (Eq,Ord,Show,Read)
-
-instance Functor Answer where
-  fmap f (Hit a) = Hit (f a)
-  fmap _ Follow  = Follow
-  fmap _ Miss    = Miss
 
 -------------------------------------------------------------------------------
 -- Oracles
 -------------------------------------------------------------------------------
 
-newtype Oracle a = Oracle { fromOracle :: forall t. Typeable t => t -> Answer a }
+newtype Oracle a = Oracle { fromOracle :: forall t. Typeable t => t -> Answer t a }
 
-instance Functor Oracle where
-  fmap f (Oracle g) = Oracle (fmap f . g)
-
-hitTest :: (Data a, Typeable b) => a -> b -> Oracle b
-hitTest a b
-  | kb <- typeOf b = case readCacheFollower (dataBox a) kb of
-    Nothing -> Oracle $ \c ->
-      if typeOf c == kb
-      then Hit (unsafeCoerce c)
-      else Follow
-    Just p -> Oracle $ \c -> let kc = typeOf c in
-      if kc == kb then Hit (unsafeCoerce c)
-      else if p kc then Follow
-      else Miss
+hitTest :: forall a b. (Data a, Typeable b) => a -> b -> Oracle b
+hitTest a b = Oracle $ \(c :: c) ->
+  case mightBe :: Maybe (Is c b) of
+    Just Data.Data.Lens.Refl -> Hit c
+    Nothing ->
+      case readCacheFollower (dataBox a) (typeOf b) of
+        Just p | not (p (typeOf c)) -> Miss
+        _ -> Follow
 
 -------------------------------------------------------------------------------
 -- Traversals
 -------------------------------------------------------------------------------
 
 
-biplateData :: forall f s a. (Applicative f, Data s, Typeable a) => (forall c. Typeable c => c -> Answer a) -> (a -> f a) -> s -> f s
+biplateData :: forall f s a. (Applicative f, Data s, Typeable a) => (forall c. Typeable c => c -> Answer c a) -> (a -> f a) -> s -> f s
 biplateData o f a0 = go2 a0 where
   go :: Data d => d -> f d
   go s = gfoldl (\x y -> x <*> go2 y) pure s
   go2 :: Data d => d -> f d
   go2 s = case o s of
-    Hit a  -> Unsafe.unsafeCoerce <$> f a
+    Hit a  -> f a
     Follow -> go s
     Miss   -> pure s
 {-# INLINE biplateData #-}
 
-uniplateData :: forall f s a. (Applicative f, Data s, Typeable a) => (forall c. Typeable c => c -> Answer a) -> (a -> f a) -> s -> f s
+uniplateData :: forall f s a. (Applicative f, Data s, Typeable a) => (forall c. Typeable c => c -> Answer c a) -> (a -> f a) -> s -> f s
 uniplateData o f a0 = go a0 where
   go :: Data d => d -> f d
   go s = gfoldl (\x y -> x <*> go2 y) pure s
   go2 :: Data d => d -> f d
   go2 s = case o s of
-    Hit a  -> Unsafe.unsafeCoerce <$> f a
+    Hit a  -> f a
     Follow -> go s
     Miss   -> pure s
 {-# INLINE uniplateData #-}
@@ -436,7 +427,7 @@ uniplateData o f a0 = go a0 where
 -------------------------------------------------------------------------------
 
 part :: (a -> Bool) -> HashSet a -> (HashSet a, HashSet a)
-part p = S.filter p &&& S.filter (not . p)
+part p s = (S.filter p s, S.filter (not . p) s)
 {-# INLINE part #-}
 
 type Follower = TypeRep -> Bool
@@ -445,8 +436,6 @@ follower :: TypeRep -> TypeRep -> HitMap -> Follower
 follower a b m
   | S.null hit               = const False
   | S.null miss              = const True
-  | S.size hit < S.size miss = \k -> S.member k hit
+  | S.size hit < S.size miss = S.member ?? hit
   | otherwise = \k -> not (S.member k miss)
   where (hit, miss) = part (\x -> S.member b (m ! x)) (S.insert a (m ! a))
-
-#endif

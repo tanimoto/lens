@@ -1,3 +1,301 @@
+4.2
+---
+* Added `_Text` isomorphisms to make the proper use with `(#)` more obvious and fit newer convention.
+* Added `Wrapped` instances for `Vector` types
+* Resolved issue #439.  The various `Prism`s for string-like types in `Data.Aeson.Lens` are now law-abiding `Prism`s "up to quotient."
+* Added `selfIndex`.
+* Support `attoparsec` 0.12.
+
+4.1.2
+-----
+* When used with `exceptions` 0.4, `throwingM` will permit use with a mere `MonadThrow`.
+
+4.1.1
+----
+* Generalized the types of `mapping`, `bimapping`, `contramapping`, `dimapping`, `lmapping`, `rmapping` to support changing the `Functor`, `Bifunctor`, `Contravariant`, and `Profunctor` respectively.
+* Compatibility with `free` 4.6
+
+4.1
+---
+* Added `Plated` instances for various free monad variants.
+* Compatibility with GHC HEAD (7.9+)
+
+4.0.7
+-----
+* Removed dependency on `constraints`. It was used in a pre-release version of 4.0 but never made it into 4.0, but the dependency had remained around complicating builds for GHC 7.4.
+
+4.0.6
+-----
+* `makeLenses` attempt to make the accessors it can under existential quantification.
+* Added `(&~)`.
+* _Experimental_ support for parallel builds on GHC 7.8 with `cabal install lens -fj`. Due to at last one known issue with GHC, it isn't recommended to use this option when rebuilding lens, as a race condition on at least one platform has been seen in the wild.
+* Added `RoleAnnotations` for GHC 7.8.1. These rule out a few user-accessible bottoms that could be caused by creative abuse of the new `Coercible` machinery. However, there was no `unsafeCoerce` exposed.
+* Removed some impossible cases that required unwritable instances from the example doctypes.
+
+4.0.5
+-----
+* Added `bimapping` to `Control.Lens.Iso`
+* Restored correct behavior of `makePrism` on types with a single constructor.
+* `makeLenses` now generates `Getter`s and `Fold`s on universally quantified fields.
+
+4.0.4
+-----
+* Made `declareFields` work again.
+
+4.0.3
+-----
+* Fixed random segfaulting when using `foldMapBy`.
+
+4.0.2
+-----
+* Properly bundled the modules needed for the properties test suite into the tarball for hackage.
+
+4.0.1
+-----
+* Typo fixes
+* Exporting `Rewrapping` from `Control.Lens.Wrapped`.
+* Removed the dependency on `cpphs`.
+
+4.0
+----
+* Added `nearly` to `Control.Lens.Prism`.
+* Added `Control.Lens.Empty`, exporting `_Empty`.
+* We now require `DefaultSignatures`.
+* Added `failing` and `ifailing` to `Control.Lens.Traversal`.
+* Changed the signature of `Data.List.Split.Lens.condensing` due to the addition of `DropBlankFields` to `Data.List.Split.CondensePolicy` in `split`.
+* Simplified `Each`, `Ixed`, and `Contains`. They are no longer indexed. The previous design was actively getting in the way of user-defined instances.
+* Replaced more of our home-grown types with standard ones. They had previously been defined to help make more intelligible error messages, but when we switched to using `(Contravariant f, Functor f)` instead of `(Gettable f)`, these ceased to really help. Now you can define even more `lens`-compatible types (e.g. `Getter` and `Fold`) without depending on `lens`.
+  * Replaced the use of `Accessor` with `Const`.
+  * Replaced the use of `Mutator` with `Identity`.
+  * Replaced the use of `Reviewed` with `Tagged`.
+* Removed the deprecated `Control.Lens.Simple` module.
+* Repurposed `Control.Lens.Combinators` to re-export `Control.Lens` sans any operators; previous residents rehomed to `Control.Lens.Lens`.
+* Added `Control.Lens.Operators` to export just the operators. Varying your import styles between these supports many qualified usage scenarios.
+* Simplified `Cons` and `Snoc`. Now they must be a `Prism`.
+* Simplified `Contains`. This necessitated losing many instancs of `Contains`, but makes it much easier and more consistent to use and instantiate.
+* Simplified the various `AsFoo` types in `Control.Exception.Lens`
+* Simplified the types in `System.IO.Error.Lens`.
+* Merged `lens-aeson` into `lens`.
+* We're exiling `Control.Lens.Zipper` to a separate package. This will let the design for it iterate faster and let us explore the trade-offs between the 3.8 style and the 3.9 style of zippers.
+* Generalized `alongside`, `inside`, `both`.
+* Switched to a new `Typeable` version of `reflection` for the harder combinators in `Control.Exception.Lens`. This enables us to comply with GHC 7.7's ban on hand-written `Typeable` instances.
+* Added a `_Show` `Prism`.
+* Added `Control.Lens.Extras` for the combinator names we don't have the gall to claim outright, but which are consistent with the rest.
+* Renamed the constructors for `ReifiedLens`, etc. to just be the name of their base type.
+* Added many many missing instances for `ReifiedFold` and `ReifiedGetter`. This permits things like `runFold ((,) <$> Fold (traverse._1) <*> Fold (traverse._2))` to be a `Fold`
+  and `ReifiedFold` can be used as a `Monad`, `Profunctor`, etc.
+* Many performance optimizations.
+* Switched to `exceptions` from `MonadCatchIO-transformers`
+* Added types for working with `RelevantFold` and `RelevantTraversal`. These are a `Fold` or `Traversal` that always has at least one target. Since `Apply` isn't a superclass of `Applicative`, you occasionally need to convert between them, but it lets you more readily work with less unsafety.
+* Changed `unwrapping` and `wrapping` to have the same constructor-oriented order as a `Prism` and renamed them t `_Wrapping` and `_Unwrapping` respectively. 
+* Drastically changed the way `_Wrapping` and `_Unwrapping` are built to get much better inference.
+* There are about 15,000 lines of patches over the last year, so I'm sure we missed a few big changes.
+
+3.10.1 [maintenance release]
+------
+* Compatibility with `base` 4.7
+
+3.10.0.1 [maintenance release]
+--------
+* Compatibility with `text` 1.0
+
+3.10
+----
+* Switched to `bifunctors`, `comonad`, `profunctors`, and `semigroupoids` 4.0.
+
+3.9.2
+-----
+* Generalized signatures for `throwing` and `throwingM`.
+
+3.9.1
+-----
+* 'condensingPolicy' was updated to work with 'split' 0.2.2
+
+3.9.0.3
+-------
+* Bumped dependency on `generic-deriving` again.
+
+3.9.0.2
+-------
+* Bumped dependency on `generic-deriving` to enable building on GHC HEAD.
+
+3.9.0.1
+-------
+* Updated the field guide image to link to imgur. Sadly the overview haddock and the haddocks are not generated in the same directory, so the haddock hook for copying the image only works locally.
+
+3.9
+-----
+* Changed `Getting` to take 3 arguments instead of 5. If you need the old behavior for portability you can use
+  `Overloaded (Accessor r) s t a b` instead of `Getting r s t a b` and it'll work consistently back through the last few releases.
+* Added `involuted` to `Control.Lens.Iso`.
+* Factored out a common `reversed` definition from all the various forms of it around the library and placed it in `Control.Lens.Iso`.
+* Added `binary`, `octal`, `decimal` and `hex` to `Numeric.Lens`.
+* Added `sans` to `Control.Lens.At`.
+* Improved interoperability:
+  * Reimplemented `Gettable` as an alias for `Contravariant` and `Functor` together to derive `Getter` and `Fold`. This means you can now
+    implement a `Getter` or `Fold` with only a Haskell 98 dependency (`contravariant`).
+  * Removed `Reviewable`. We now use `Bifunctor` and `Profunctor` together to derive `Review`. This means you can now implement a `Review`
+    with Haskell 98 dependencies (`profunctors` and `bifunctors`).
+  * These changes enables more types to be defined without incurring a dependency on the `lens` package.
+
+3.8.7.0-3.8.7.3 [maintenance releases]
+-----
+* Fixes to dependencies and pragmas.
+
+3.8.6 [maintenance release]
+-----
+* Fixed an issue with `DefaultSignatures` being used outside of the appropriate `#ifdef` that caused compilation issues on GHC 7.0.2.
+* Generalized the signature of `prism'`
+* Added `\_Void` and `only` to `Control.Lens.Prism` and `devoid` to `Control.Lens.Lens`.
+* Added `\_Nothing` to `Control.Lens.Prism`.
+* Added `devoid` and `united` to `Control.Lens.Lens`.
+
+3.8.5
+-----
+* Fixed more sporadic issues in doctests, caused by carrying flags from `$setup` between modules.
+
+3.8.4
+-----
+* Renamed `strippingPrefix` to `prefixed`, `strippingSuffix` to `suffixed`. Left the old names as deprecated aliases.
+* Fixed issues with the test suite caused by `doctests` carrying flags from the `$setup` block between modules.
+* Benchmarks now use `generic-deriving` rather than `ghc-prim` directly, like the rest of the package.
+* Added `Generics.Deriving.Lens`, which is now simply re-exported from `GHC.Generics.Lens`.
+
+3.8.3
+-----
+* Added `strippingSuffix` and `stripSuffix` to `Data.Data.Lens`
+* Added `unpackedBytes` and `unpackedChars` to `Data.ByteString.*.Lens`
+* Added `unpacked` to `Data.Text.*.Lens`
+* Added `(#)` as an infix form of `review` to ease using a `Prism` like a smart constructor in `Control.Lens.Review`.
+
+3.8.2
+-----
+* Added a notion of `Handleable(handler, handler_)` to `Control.Exception.Lens` to facilitate constructing a `Handler` from an arbitrary `Fold` or `Prism`.
+* Added a notion of `Handler` and `catches` to and `Control.Monad.Error.Lens` to mirror the `Control.Exception` and `Control.Monad.CatchIO` constructions.
+* Added additional doctests and documentation.
+* Improved error messages and support for types with arguments in `makeFields`.
+
+3.8.1
+-----
+* Fixed a bug in `makeFields` in hierarchical modules.
+
+3.8.0.2
+-------
+* Fixed an issue with running the `doctests` test suite when an older version of `semigroups` is installed.
+
+3.8
+---
+* Overall:
+  * Replaced each of the different `SimpleFoo` type aliases with `Foo'` throughout. The various `Simple` aliases can still be found in `Control.Lens.Simple` but are now deprecated.
+  * Made sweeping changes to `Iso` and `Prism` and `Indexed` lenses internally. They are now based on `profunctors`. This affects how you use `indexed` in the resulting code and dramatically changed the meaning of `Overloaded`.
+  * Generalized combinators to pass through indices unmodified wherever possible and added indexed variants to existing combinators. There are hundreds of these changes and they would swamp this list.
+* `Control.Exception.Lens`
+  * This module was created to add combinators and prisms that make it possible to work with GHC's extensible exceptions and monad transformer stacks more easily. There are knock-on changes in `Data.Dynamic.Lens`, `System.Exit.Lens`, and `System.IO.Error.Lens`.
+* `Control.Lens.At`
+  * Moved `At(at)` and `Contains(contains)` and factored out `Ixed(ix)`.
+  * Deprecated `_at` and `resultAt`.
+  * Removed various `ordinal` and `ix` combinators, which are subsumed by `Ixed(ix)`.
+* `Control.Lens.Cons`
+  * Consoldiated the various `_head`, `_tail`, `_init` and `_last` traversals that were scattered around the place into a pair of `Cons` and `Snoc` classes that provide `_Cons` and `_Snoc` prisms respectively, and combinators that build on top.
+* `Control.Lens.Each`
+  * Generalized the signature of `Each` to permit it to provide an `IndexedSetter` for `((->) e)`.
+  * `Each` now uses an `Index` type family that is shared with `At`, `Ixed` and `Contains` to indicate these operations are related.
+* `Control.Lens.Equality`
+  * Added as a stronger form of `Iso` that can be used to safely cast.
+  * Added the adverb `simply`, which can be used to simplify the types of most combinators in the library so they only take a simple lens, simple traversal, etc as their first argument instead. e.g. `simply view` forces `a ~ b`, `s ~ t` in the argument to `view`.
+* `Control.Lens.Fold`
+  * Added `foldr1Of'` and `foldl1Of'`.
+  * Added `has` and `hasn't`.
+* `Control.Lens.Indexed`
+  * The various indexed combinators for each type were distributed to their respective modules. This module grew to encompass the remaining index-specifics.
+  * Added `index` and `indices`, and removed `iwhere` and `iwhereOf`. Use `itraversed.indices even` and `bar.indices (>3)` instead.
+* `Control.Lens.Internal`
+  * This module was exploded into more manageable component modules.
+* `Control.Lens.Iso`
+  * `Strict(strict)` is now a `Simple Iso`.
+  * Added `magma` and `imagma` which can be used to provide a 'debugging view' of a `Traversal`.
+* `Control.Lens.Lens`
+  * Restructuring split this module out from `Control.Lens.Type` and merged the contents `Control.Lens.IndexedLens`.
+* `Control.Lens.Level`
+  * This module was created to provide the breadth-first-search Traversals `levels` and `ilevels` which can be used to do (optionally depth-limited) breadth-first searches through arbitrary traversals reaching all leaves at finite depth in finite time. To use these in full accordance with the laws you should restrict yourself to commutative operations and finite containers, but they are useful even in the absence of these properties.
+* `Control.Lens.Loupe`
+  * In the interest of consistency, the `Loupe` alias has been deprecated in favor of `ALens`.
+  * `Loupe` (and `ALens`) are now defined in terms of `Pretext` rather than `Context`. This permits them to be cloned at a reduced cost reducing the call for `ReifiedLens`.
+* `Control.Lens.Operators`
+  * Added this module for users who insist on qualified use, but want access to the operators. They can `import qualified Control.Lens as Lens` and `import Control.Lens.Operators` unqualified.
+* `Control.Lens.Prism`
+  * Added `prism'` to construct `SimplePrism`s.
+* `Control.Lens.Reified`
+  * Consolidated the various `ReifiedFoo` definitions into one module.
+* `Control.Lens.Representable`
+  * This module was removed. Its functionality may be split out into a separate package, but currently the `linear` package exports is own `Linear.Core` module to provide this functionality. It was taking lots of useful names for little functionality and didn't feel like the rest of the API.
+* `Control.Lens.Review`
+  * This module now factors the `review` functionality out of `Prism` and exposes `unto`, which is to `review` what `to` is to `view`.
+* `Control.Lens.Setter`
+  * Added `contramapped` and `argument` for mapping over inputs.
+* `Control.Lens.Simple`
+  * Removed the infix lens aliases and repurposed the module to house the now deprecated `SimpleFoo` type aliases, which were replaced universally with `Foo'`.
+* `Control.Lens.TH`
+  * `makeLenses` now generates `Lens'` and `Traversal'` where appropriate
+  * Added `makePrisms` as a generalized `makeIso` that automatically generates a `Prism` for each constructor. `makePrisms` generates names with an `_Foo` convention. This was consolidated upon throughout the library to reduce namespace conflicts between prisms and lenses.
+  * Added `makeFields`, which generates classes for each individual field in a data type.
+  * Added `makeWrapped`, which automatically generates a `Wrapped` instance for a newtype.
+* `Control.Lens.Type`
+  * This module was repurposed to provide a single home for all the standard lens-like type aliases used when producing lenses. You still need to go to their respective modules to find the types for consuming lens-likes if you want to generate your own lens combinators
+* `Control.Lens.Wrapped`
+  * Added `wrapped'` and `unwrapped'` for scenarios where you need the help with type inference.
+* `Control.Lens.Zipper`
+  * Converted `Zipper` to walk a magma based on the original structure and to use indices from indexed traversals when restoring from tape. This also means that when zipping around within a balanced structure with ascending keys `moveTo` can operate in logarithmic time, but required changing the `Zipper` type to add the index type.
+* `Data.Bits.Lens`
+  * Added `byteAt`.
+* `Data.ByteString.Lens`
+  * `Data.ByteString.Lazy.Lens` now uses `Int64`-based indexing.
+  * The `Traversal` for strict `ByteStrings` now construct a balanced tree up to a given grain size. This permits zipper based seeking to operate in logarithmic time and speeds up many traversals.
+* `Numeric.Lens`
+  * Created. `base` shows and reads integers at base-2 through base-36. `integral` can be used as a safe `fromInteger`/`toInteger`.
+
+3.7.6 [maintenance release]
+-----
+* Fixed an issue with the `Complex` `Each` instance.
+
+3.7.5 [maintenance release]
+-----
+* Fixed an errant `LANGUAGE` pragma
+
+3.7.4 [maintenance release]
+-----
+* Backported the API for `ALens` and `ALens'` to support `snap` builds on old platforms.
+
+3.7.3 [maintenance release]
+-----
+* Removed my intra-package dependency upper bounds for my own packages. In particular this enables us to work with `semigroups` 0.9.
+* Switched to `transformers-compat` to avoid having unbuilding modules at the top of the documentation, and to ease 3rd party compatibility.
+* Updated `Setup.lhs` to be compatible with Cabal 1.17
+
+3.7.2 [maintenance release]
+-----
+* Bug fix for `Magnify`. It was missing functional dependencies to determine its `k` parameter from `m` or `n`.
+
+3.7.1.2 [maintenance release]
+-------
+* Made the doctest test suite hide all but the exact versions of packages used to build this package to avoid problems with complicated user environments.
+* Removed doctests based on `:t` as they are fragile and break across GHC versions.
+* Fixed GHC 7.0.4 compatibility by guarding `DefaultSignatures` in `Control.Lens.Each`.
+
+3.7.1.1 [maintenance release]
+-------
+* Removed tests that will (likely) fail in the presence of `hashable` 1.2
+
+3.7.1
+-----
+* Added `preuse`, `preuses` to `Control.Lens.Fold`
+* Added `Each(each)` to `Control.Lens.Each` for indexed traversal of potentially monomorphic containers.
+* Added `indexing64` and `traversed64` for help with large containers.
+* Generalized the type signature of `choosing`.
+* Exported `unwrapped` from `Control.Lens.Wrapped`.
+* Support for `hashable` 1.2
+* Added `(??)` to `Control.Lens.Combinators`.
+
 3.7.0.2
 -------
 * Fixed flagging for Safe Haskell.
@@ -42,6 +340,7 @@
 * Readded `leftmost` and `rightmost` due to the verbosity of `farthest leftward`/`farthest rightward`.
 * Added `preview`/`previews`/`firstOf` and deprecated `headOf`.
 * Added `iview`/`iviews`/`iuse`/`iuses` to `Control.Lens.IndexedGetter`.
+* We've generalized the type of Bazaar and provided generalized variants of `partsOf`, etc. that used it.
 
 3.6.0.4 [maintenance release]
 -------
@@ -90,7 +389,7 @@
 [3.5](https://github.com/ekmett/lens/issues?milestone=8&state=closed)
 ---
 * Fixed a potential SafeHaskell issue where a user could use `undefined` to derive `unsafeCoerce`. You now have to import an explicitly
-  Unsafe module and create an instance of `Trustworthy` for your type to cause this behavior, so if you do, its on your head, not mine. :)
+  Unsafe module and create an instance of `Trustworthy` for your type to cause this behavior, so if you do, it's on your head, not mine. :)
 * Renamed `EvilBazaar` to `BazaarT`.
 * Moved a lot of internals around. Most notably, `Gettable`, `Settable` and `Effective` have moved to `Control.Lens.Classes`.
 * Exposed `partsOf'` and `unsafePartsOf'` in `Control.Lens.Traversal` to reduce reliance on `BazaarT` in `Control.Lens.Zipper`
@@ -130,6 +429,7 @@
 * Fixed a bug that caused `resultAt` to give wrong answers most of the time.
 * Changed `resultAt` to an `IndexedLens` and moved it to `Control.Lens.IndexedLens`
 * Changed `ignored` to an `IndexedTraversal` and moved it to `Control.Lens.IndexedTraversal`
+* We've relinquished the name `value`.
 
 3.2
 ---

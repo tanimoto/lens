@@ -1,18 +1,36 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE FlexibleInstances #-}
--- | The commented code summarizes what will be auto-generated below
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE CPP #-}
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Main (templates)
+-- Copyright   :  (C) 2012-14 Edward Kmett
+-- License     :  BSD-style (see the file LICENSE)
+-- Maintainer  :  Edward Kmett <ekmett@gmail.com>
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- This test suite validates that we are able to generate usable lenses with
+-- template haskell.
+--
+-- The commented code summarizes what will be auto-generated below
+-----------------------------------------------------------------------------
 module Main where
 
 import Control.Lens
+import Data.List (nub)
 -- import Test.QuickCheck (quickCheck)
 
 data Bar a b c = Bar { _baz :: (a, b) }
 makeLenses ''Bar
 -- baz :: Lens (Bar a b c) (Bar a' b' c) (a,b) (a',b')
+-- upgrades to:
+-- baz :: Iso (Bar a b c) (Bar a' b' c') (a, b) (a', b')
 
 data Quux a b = Quux { _quaffle :: Int, _quartz :: Double }
 makeLenses ''Quux
@@ -25,11 +43,11 @@ makeLenses ''Quark
 -- gaffer :: Simple Lens (Quark a) a
 -- tape :: Simple Traversal (Quark a) a
 
-data Hadron a b = Science { _a1 :: a, _a2 :: a, _b :: b }
+data Hadron a b = Science { _a1 :: a, _a2 :: a, _c :: b }
 makeLenses ''Hadron
 -- a1 :: Simple Lens (Hadron a b) a
 -- a2 :: Simple Lens (Hadron a b) a
--- b :: Lens (Hadron a b) (Hadron a b') b b'
+-- c :: Lens (Hadron a b) (Hadron a b') b b'
 
 data Perambulation a b
   = Mountains { _terrain :: a, _altitude :: b }
@@ -81,6 +99,110 @@ instance HasMono Nucleosis Int where
 -- Dodek's example
 data Foo = Foo { _fooX, _fooY :: Int }
 makeClassy ''Foo
+
+
+data Dude a = Dude
+    { dudeLevel        :: Int
+    , dudeAlias        :: String
+    , dudeLife         :: ()
+    , dudeThing        :: a
+    }
+data Lebowski a = Lebowski
+    { _lebowskiAlias    :: String
+    , _lebowskiLife     :: Int
+    , _lebowskiMansion  :: String
+    , _lebowskiThing    :: Maybe a
+    }
+
+makeFields ''Dude
+makeFields ''Lebowski
+
+dudeDrink :: String
+dudeDrink      = (Dude 9 "El Duderino" () "white russian")      ^. thing 
+lebowskiCarpet :: Maybe String
+lebowskiCarpet = (Lebowski "Mr. Lebowski" 0 "" (Just "carpet")) ^. thing
+
+declareLenses [d|
+  data Quark1 a = Qualified1   { gaffer1 :: a }
+                | Unqualified1 { gaffer1 :: a, tape1 :: a }
+  |]
+-- data Quark1 a = Qualified1 a | Unqualified1 a a
+-- gaffer1 :: Lens' (Quark1 a) a
+-- tape1 :: Traversal (Quark1 a) (Quark1 b) a b
+
+declarePrisms [d|
+  data Exp = Lit Int | Var String | Lambda { bound::String, body::Exp }
+  |]
+-- data Exp = Lit Int | Var String | Lambda { bound::String, body::Exp }
+-- _Lit :: Prism' Exp Int
+-- _Var :: Prism' Exp String
+-- _Lambda :: Prism' Exp (String, Exp)
+
+declarePrisms [d|
+  data Banana = Banana Int String
+  |]
+-- data Banana = Banana Int String
+-- _Banana :: Iso' Banana (Int, String)
+cavendish :: Banana
+cavendish = _Banana # (4, "Cavendish")
+
+banana :: Iso' (Int, String) Banana
+banana = from _Banana
+
+data family Family a b c
+
+#if __GLASGOW_HASKELL >= 706
+declareLenses [d|
+  data instance Family Int (a, b) a = FamilyInt { fm0 :: (b, a), fm1 :: Int }
+  |]
+-- data instance Family Int (a, b) a = FamilyInt a b
+-- fm0 :: Lens (Family Int (a, b) a) (Family Int (a', b') a') (b, a) (b', a')
+-- fm1 :: Lens' (Family Int (a, b) a) Int
+#endif
+
+class Class a where
+  data Associated a
+  method :: a -> Int
+
+declareLenses [d|
+  instance Class Int where
+    data Associated Int = AssociatedInt { mochi :: Double }
+    method = id
+  |]
+-- instance Class Int where
+--   data Associated Int = AssociatedInt Double
+--   method = id
+-- mochi :: Iso' (Associated Int) Double
+
+#if __GLASGOW_HASKELL >= 706
+declareFields [d|
+  data DeclaredFields f a
+    = DeclaredField1 { declaredFieldsA :: f a    , declaredFieldsB :: Int }
+    | DeclaredField2 { declaredFieldsC :: String , declaredFieldsB :: Int }
+    deriving (Show)
+  |]
+
+declaredFieldsUse1 :: [Bool]
+declaredFieldsUse1 = view fieldsA (DeclaredField1 [True] 0)
+
+declaredFieldsUse2 :: [DeclaredFields [] ()]
+declaredFieldsUse2 = over (traverse.fieldsB) (+1) [DeclaredField1 [()] 0, DeclaredField2 "" 1]
+#endif
+
+data Rank2Tests
+  = C1 { _r2length :: forall a. [a] -> Int
+       , _r2nub    :: forall a. Eq a=> [a] -> [a]
+       }
+  | C2 { _r2length :: forall a. [a] -> Int }
+
+makeLenses ''Rank2Tests
+
+useFold1 :: Maybe [Bool]
+useFold1  = C1 length nub ^? r2nub . to ($ [False,True,True])
+useFold2 :: Maybe [Bool]
+useFold2  = C2 length     ^? r2nub . to ($ [False,True,True])
+useLength :: Int
+useLength = C1 length nub ^. r2length . to ($ [False,True,True])
 
 main :: IO ()
 main = putStrLn "test/templates.hs: ok"

@@ -1,9 +1,11 @@
 Lens: Lenses, Folds, and Traversals
 ==================================
 
-[![Build Status](https://secure.travis-ci.org/ekmett/lens.png?branch=master)](http://travis-ci.org/ekmett/lens)
+[![Build Status](https://secure.travis-ci.org/ekmett/lens.svg)](http://travis-ci.org/ekmett/lens)
 
 This package provides families of [lenses](https://github.com/ekmett/lens/blob/master/src/Control/Lens/Type.hs), [isomorphisms](https://github.com/ekmett/lens/blob/master/src/Control/Lens/Iso.hs), [folds](https://github.com/ekmett/lens/blob/master/src/Control/Lens/Fold.hs), [traversals](https://github.com/ekmett/lens/blob/master/src/Control/Lens/Traversal.hs), [getters](https://github.com/ekmett/lens/blob/master/src/Control/Lens/Getter.hs) and [setters](https://github.com/ekmett/lens/blob/master/src/Control/Lens/Setter.hs).
+
+If you are looking for where to get started, [a crash course video](http://youtu.be/cefnmjtAolY?hd=1) on how `lens` was constructed and how to use the basics is available on youtube. It is best watched in high definition to see the slides, but the [slides](http://comonad.com/haskell/Lenses-Folds-and-Traversals-NYC.pdf) are also available if you want to use them to follow along.
 
 The [FAQ](https://github.com/ekmett/lens/wiki/FAQ), which provides links to a large number of different resources for learning about lenses and an overview of the [derivation](https://github.com/ekmett/lens/wiki/Derivation) of these types can be found on the [Lens Wiki](https://github.com/ekmett/lens/wiki) along with a brief [overview](https://github.com/ekmett/lens/wiki/Overview) and some [examples](https://github.com/ekmett/lens/wiki/Examples).
 
@@ -51,7 +53,7 @@ ghci> set (_2._1) 42 ("hello",("world","!!!"))
 ("hello",(42,"!!!"))
 ```
 
-You can make a `Getter` out of a pure functions with `to`.
+You can make a `Getter` out of a pure function with `to`.
 
 ```haskell
 ghci> "hello"^.to length
@@ -69,7 +71,7 @@ As we saw above, you can write to lenses and these writes can change the type of
 
 ```haskell
 ghci> _1 .~ "hello" $ ((),"world")
-("hello","world)
+("hello","world")
 ```
 
 Conversely `view`, can be used as a prefix alias for `(^.)`.
@@ -93,13 +95,13 @@ makeLenses ''Foo
 This will automatically generate the following lenses:
 
 ```haskell
-bar, baz :: Simple Lens (Foo a) Int
+bar, baz :: Lens' (Foo a) Int
 quux :: Lens (Foo a) (Foo b) a b
 ```
 
 A `Lens` takes 4 parameters because it can change the types of the whole when you change the type of the part.
 
-Often you won't need this flexibility, a `Simple Lens` takes 2 parameters, and can be used directly as a `Lens`.
+Often you won't need this flexibility, a `Lens'` takes 2 parameters, and can be used directly as a `Lens`.
 
 You can also write to setters that target multiple parts of a structure, or their composition with other
 lenses or setters. The canonical example of a setter is 'mapped':
@@ -239,101 +241,101 @@ Operators
   <td/>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Getter.html#v:use"><code>use</code></a>,<a href="http://ekmett.github.com/lens/Control-Lens-Getter.html#v:uses"><code>uses</code></a></td>
   <td/>
-  <td>View target(s). <a href="http://ekmett.github.com/lens/Control-Lens-Getter.html#v:query"><code>query</code></a> works like <a href="http://ekmett.github.com/lens/Control-Lens-Getter.html#v:use"><code>use</code></a> over a <code>MonadReader</code></td>
+  <td>View target(s). <a href="http://ekmett.github.com/lens/Control-Lens-Getter.html#v:view"><code>view</code></a> works like <a href="http://ekmett.github.com/lens/Control-Lens-Getter.html#v:use"><code>use</code></a> over a <code>MonadReader</code></td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:set"><code>set</code></a>, <a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:.-126-"><code>.~</code></a></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-60-.-126-"><code>&lt;.~</code></a></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:.-61-"><code>.=</code></a></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:assign"><code>assign</code></a>,<a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-60-.-61-"><code>&lt;.=</code></a></td>
-  <td>Replace target(s). <a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--60-.-126-"><code>&lt;&lt;.~</code> and
-      <a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--60-.-61-"><code>&lt;&lt;.=</code></a>
+  <td>Replace target(s). <a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--60-.-126-"><code>&lt;&lt;.~</code></a> and
+      <a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--60-.-61-"><code>&lt;&lt;.=</code></a>
       return the old value</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:over"><code>over</code></a>,<a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:mapOf"><code>mapOf</code></a>,<a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-37--126-"><code>%~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--37--126-"><code>&lt;%~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--37--126-"><code>&lt;%~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-37--61-"><code>%=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--37--61-"><code>&lt;%=</code></td>
-  <td>Update target(s). <a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--60--37--126-"><code>&lt;&lt;%~</code> and
-      <a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--60--37--61-"><code>&lt;&lt;%=</code></a>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--37--61-"><code>&lt;%=</code></td>
+  <td>Update target(s). <a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--60--37--126-"><code>&lt;&lt;%~</code></a> and
+      <a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--60--37--61-"><code>&lt;&lt;%=</code></a>
       return the old value</td>
 </tr>
 <tr>
-  <td><code>id</code>,<a href="http://ekmett.github.com/lens/Control-Lens-Traversal.html#v:traverseOf"><code>traverseOf</code></a>,<a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-37--37--126-"><code>%%~</code></a></td>
+  <td><code>id</code>,<a href="http://ekmett.github.com/lens/Control-Lens-Traversal.html#v:traverseOf"><code>traverseOf</code></a>,<a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-37--37--126-"><code>%%~</code></a></td>
   <td/>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-37--37--61-"><code>%%=</code></a></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-37--37--61-"><code>%%=</code></a></td>
   <td/>
-  <td>Update target(s) with an <code>Applicative</code> or auxillary result</td>
+  <td>Update target(s) with an <code>Applicative</code> or auxiliary result</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-43--126-"><code>+~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--43--126-"><code>&lt;+~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--43--126-"><code>&lt;+~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-43--61-"><code>+=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--43--61-"><code>&lt;+=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--43--61-"><code>&lt;+=</code></td>
   <td>Add to target(s)</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-45--126-"><code>-~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--45--126-"><code>&lt;-~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--45--126-"><code>&lt;-~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-45--61-"><code>-=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--45--61-"><code>&lt;-=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--45--61-"><code>&lt;-=</code></td>
   <td>Subtract from target(s)</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-42--126-"><code>*~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--42--126-"><code>&lt;*~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--42--126-"><code>&lt;*~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-42--61-"><code>*=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--42--61-"><code>&lt;*=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--42--61-"><code>&lt;*=</code></td>
   <td>Multiply target(s)</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-47--47--126-"><code>//~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--47--47--126-"><code>&lt;//~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--47--47--126-"><code>&lt;//~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-47--47--61-"><code>//=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--47--47--61-"><code>&lt;//=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--47--47--61-"><code>&lt;//=</code></td>
   <td>Divide target(s)</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-94--126-"><code>^~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--94--126-"><code>&lt;^~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--94--126-"><code>&lt;^~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-94--61-"><code>^=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--94--61-"><code>&lt;^=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--94--61-"><code>&lt;^=</code></td>
   <td>Raise target(s) to a non-negative <code>Integral</code> power</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-94--94--126-"><code>^^~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--94--94--126-"><code>&lt;^^~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--94--94--126-"><code>&lt;^^~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-94--94--61-"><code>^^=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--94--94--61-"><code>&lt;^^=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--94--94--61-"><code>&lt;^^=</code></td>
   <td>Raise target(s) to an <code>Integral</code> power</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-42--42--126-"><code>**~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--42--42--126-"><code>&lt;**~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--42--42--126-"><code>&lt;**~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-42--42--61-"><code>**=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--42--42--61-"><code>&lt;**=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--42--42--61-"><code>&lt;**=</code></td>
   <td>Raise target(s) to an arbitrary power</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-124--124--126-"><code>||~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--124--124--126-"><code>&lt;||~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--124--124--126-"><code>&lt;||~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-124--124--61-"><code>||=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--124--124--61-"><code>&lt;||=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--124--124--61-"><code>&lt;||=</code></td>
   <td>Logically or target(s)</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-38--38--126-"><code>&amp;&amp;~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--38--38--126-"><code>&lt;&amp;&amp;~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--38--38--126-"><code>&lt;&amp;&amp;~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-38--38--61-"><code>&amp;&amp;=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--38--38--61-"><code>&lt;&amp;&amp;=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--38--38--61-"><code>&lt;&amp;&amp;=</code></td>
   <td>Logically and target(s)</td>
 </tr>
 <tr>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-60--62--126-"><code>&lt;&gt;~</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--60--62--126-"><code>&lt;&lt;&gt;~</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--60--62--126-"><code>&lt;&lt;&gt;~</code></td>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-Setter.html#v:-60--62--61-"><code>&lt;&gt;=</code></a></td>
-  <td><a href="http://ekmett.github.com/lens/Control-Lens-Type.html#v:-60--60--62--61-"><code>&lt;&lt;&gt;=</code></td>
+  <td><a href="http://ekmett.github.com/lens/Control-Lens-Lens.html#v:-60--60--62--61-"><code>&lt;&lt;&gt;=</code></td>
   <td><code>mappend</code> to the target monoidal value(s)</td>
 </tr>
 <tr>
@@ -366,7 +368,7 @@ Operators
   <td/>
   <td><a href="http://ekmett.github.com/lens/Control-Lens-IndexedLens.html#v:-37--37--64--61-"><code>%%@=</code></a></td>
   <td/>
-  <td>Update target(s) with an <code>Applicative</code> or auxillary result with access to the index.</td>
+  <td>Update target(s) with an <code>Applicative</code> or auxiliary result with access to the index.</td>
 </tr>
 <tr><th colspan=5><a href="http://ekmett.github.com/lens/Data-Bits-Lens.html">Data.Bits.Lens</a></th></tr>
 <tr>

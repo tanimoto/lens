@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  System.FilePath.Lens
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  experimental
@@ -11,8 +11,8 @@
 module System.FilePath.Lens
   (
   -- * Operators
-    (</>~), (<</>~), (<.>~), (<<.>~)
-  , (</>=), (<</>=), (<.>=), (<<.>=)
+    (</>~), (<</>~), (<<</>~), (<.>~), (<<.>~), (<<<.>~)
+  , (</>=), (<</>=), (<<</>=), (<.>=), (<<.>=), (<<<.>=)
   -- * Lenses
   , basename, directory, extension, filename
   ) where
@@ -28,8 +28,11 @@ import System.FilePath
 
 import Control.Lens hiding ((<.>))
 
-infixr 4 </>~, <</>~, <.>~, <<.>~
-infix 4 </>=, <</>=, <.>=, <<.>=
+-- $setup
+-- >>> :set -XNoOverloadedStrings
+
+infixr 4 </>~, <</>~, <<</>~, <.>~, <<.>~, <<<.>~
+infix 4 </>=, <</>=, <<</>=, <.>=, <<.>=, <<<.>=
 
 -- | Modify the path by adding another path.
 --
@@ -42,7 +45,7 @@ infix 4 </>=, <</>=, <.>=, <<.>=
 -- ('</>~') :: 'Lens' s a 'FilePath' 'FilePath' -> 'FilePath' -> s -> a
 -- ('</>~') :: 'Traversal' s a 'FilePath' 'FilePath' -> 'FilePath' -> s -> a
 -- @
-(</>~) :: Setting s t FilePath FilePath -> FilePath -> s -> t
+(</>~) :: ASetter s t FilePath FilePath -> FilePath -> s -> t
 l </>~ n = over l (</> n)
 {-# INLINE (</>~) #-}
 
@@ -53,12 +56,12 @@ l </>~ n = over l (</> n)
 -- ("hello/bin","world/bin")
 --
 -- @
--- ('</>=') :: 'MonadState' s m => 'Simple' 'Setter' s 'FilePath' -> 'FilePath' -> m ()
--- ('</>=') :: 'MonadState' s m => 'Simple' 'Iso' s 'FilePath' -> 'FilePath' -> m ()
--- ('</>=') :: 'MonadState' s m => 'Simple' 'Lens' s 'FilePath' -> 'FilePath' -> m ()
--- ('</>=') :: 'MonadState' s m => 'Simple' 'Traversal' s 'FilePath' -> 'FilePath' -> m ()
+-- ('</>=') :: 'MonadState' s m => 'Setter'' s 'FilePath' -> 'FilePath' -> m ()
+-- ('</>=') :: 'MonadState' s m => 'Iso'' s 'FilePath' -> 'FilePath' -> m ()
+-- ('</>=') :: 'MonadState' s m => 'Lens'' s 'FilePath' -> 'FilePath' -> m ()
+-- ('</>=') :: 'MonadState' s m => 'Traversal'' s 'FilePath' -> 'FilePath' -> m ()
 -- @
-(</>=) :: MonadState s m => SimpleSetting s FilePath -> FilePath -> m ()
+(</>=) :: MonadState s m => ASetter' s FilePath -> FilePath -> m ()
 l </>= b = State.modify (l </>~ b)
 {-# INLINE (</>=) #-}
 
@@ -75,10 +78,18 @@ l <</>~ m = l <%~ (</> m)
 -- your monad's state and return the result.
 --
 -- When you do not need the result of the operation, ('</>=') is more flexible.
-(<</>=) :: MonadState s m => SimpleLensLike ((,)FilePath) s FilePath -> FilePath -> m FilePath
+(<</>=) :: MonadState s m => LensLike' ((,)FilePath) s FilePath -> FilePath -> m FilePath
 l <</>= r = l <%= (</> r)
 {-# INLINE (<</>=) #-}
 
+
+(<<</>~) :: Optical' (->) q ((,)FilePath) s FilePath -> FilePath -> q s (FilePath, s)
+l <<</>~ b = l $ \a -> (a, a </> b)
+{-# INLINE (<<</>~) #-}
+
+(<<</>=) :: MonadState s m => LensLike' ((,)FilePath) s FilePath -> FilePath -> m FilePath
+l <<</>= b = l %%= \a -> (a, a </> b)
+{-# INLINE (<<</>=) #-}
 
 -- | Modify the path by adding extension.
 --
@@ -91,7 +102,7 @@ l <</>= r = l <%= (</> r)
 -- ('<.>~') :: 'Lens' s a 'FilePath' 'FilePath' -> 'String' -> s -> a
 -- ('<.>~') :: 'Traversal' s a 'FilePath' 'FilePath' -> 'String' -> s -> a
 -- @
-(<.>~) :: Setting s a FilePath FilePath -> String -> s -> a
+(<.>~) :: ASetter s a FilePath FilePath -> String -> s -> a
 l <.>~ n = over l (<.> n)
 {-# INLINE (<.>~) #-}
 
@@ -101,12 +112,12 @@ l <.>~ n = over l (<.> n)
 -- ("hello.txt","world.txt")
 --
 -- @
--- ('<.>=') :: 'MonadState' s m => 'Simple' 'Setter' s 'FilePath' -> 'String' -> m ()
--- ('<.>=') :: 'MonadState' s m => 'Simple' 'Iso' s 'FilePath' -> 'String' -> m ()
--- ('<.>=') :: 'MonadState' s m => 'Simple' 'Lens' s 'FilePath' -> 'String' -> m ()
--- ('<.>=') :: 'MonadState' s m => 'Simple' 'Traversal' s 'FilePath' -> 'String' -> m ()
+-- ('<.>=') :: 'MonadState' s m => 'Setter'' s 'FilePath' -> 'String' -> m ()
+-- ('<.>=') :: 'MonadState' s m => 'Iso'' s 'FilePath' -> 'String' -> m ()
+-- ('<.>=') :: 'MonadState' s m => 'Lens'' s 'FilePath' -> 'String' -> m ()
+-- ('<.>=') :: 'MonadState' s m => 'Traversal'' s 'FilePath' -> 'String' -> m ()
 -- @
-(<.>=) :: MonadState s m => SimpleSetting s FilePath -> String -> m ()
+(<.>=) :: MonadState s m => ASetter' s FilePath -> String -> m ()
 l <.>= b = State.modify (l <.>~ b)
 {-# INLINE (<.>=) #-}
 
@@ -124,38 +135,57 @@ l <<.>~ m = l <%~ (<.> m)
 -- | Add an extension onto the end of the target of a 'Lens' into
 -- your monad's state and return the result.
 --
--- >>> evalState (_1 <<.>= "txt") $("hello","world")
+-- >>> evalState (_1 <<.>= "txt") ("hello","world")
 -- "hello.txt"
 --
 -- When you do not need the result of the operation, ('<.>=') is more flexible.
-(<<.>=) :: MonadState s m => SimpleLensLike ((,)FilePath) s FilePath -> String -> m FilePath
+(<<.>=) :: MonadState s m => LensLike' ((,)FilePath) s FilePath -> String -> m FilePath
 l <<.>= r = l <%= (<.> r)
 {-# INLINE (<<.>=) #-}
 
 
+(<<<.>~) :: Optical' (->) q ((,)FilePath) s FilePath -> String -> q s (FilePath, s)
+l <<<.>~ b = l $ \a -> (a, a <.> b)
+{-# INLINE (<<<.>~) #-}
+
+(<<<.>=) :: MonadState s m => LensLike' ((,)FilePath) s FilePath -> String -> m FilePath
+l <<<.>= b = l %%= \a -> (a, a <.> b)
+{-# INLINE (<<<.>=) #-}
+
 -- | A 'Lens' for reading and writing to the basename
+--
+-- Note: This is 'not' a legal 'Lens' unless the outer 'FilePath' has both a directory
+-- and filename component and the generated basenames are not null and contain no directory
+-- separators.
 --
 -- >>> basename .~ "filename" $ "path/name.png"
 -- "path/filename.png"
-basename :: Simple Lens FilePath FilePath
+basename :: Lens' FilePath FilePath
 basename f p = (<.> takeExtension p) . (takeDirectory p </>) <$> f (takeBaseName p)
 {-# INLINE basename #-}
 
 
 -- | A 'Lens' for reading and writing to the directory
 --
+-- Note: this is /not/ a legal 'Lens' unless the outer 'FilePath' already has a directory component,
+-- and generated directories are not null.
+--
 -- >>> "long/path/name.txt" ^. directory
 -- "long/path"
-directory :: Simple Lens FilePath FilePath
+directory :: Lens' FilePath FilePath
 directory f p = (</> takeFileName p) <$> f (takeDirectory p)
 {-# INLINE directory #-}
 
 
 -- | A 'Lens' for reading and writing to the extension
 --
+-- Note: This is /not/ a legal 'Lens', unless you are careful to ensure that generated
+-- extension 'FilePath' components are either null or start with 'System.FilePath.extSeparator'
+-- and do not contain any internal 'System.FilePath.extSeparator's.
+--
 -- >>> extension .~ ".png" $ "path/name.txt"
 -- "path/name.png"
-extension :: Simple Lens FilePath FilePath
+extension :: Lens' FilePath FilePath
 extension f p = (n <.>) <$> f e
  where
   (n, e) = splitExtension p
@@ -164,8 +194,12 @@ extension f p = (n <.>) <$> f e
 
 -- | A 'Lens' for reading and writing to the full filename
 --
+-- Note: This is /not/ a legal 'Lens', unless you are careful to ensure that generated
+-- filename 'FilePath' components are not null and do not contain any
+-- elements of 'System.FilePath.pathSeparators's.
+--
 -- >>> filename .~ "name.txt" $ "path/name.png"
 -- "path/name.txt"
-filename :: Simple Lens FilePath FilePath
+filename :: Lens' FilePath FilePath
 filename f p = (takeDirectory p </>) <$> f (takeFileName p)
 {-# INLINE filename #-}

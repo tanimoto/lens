@@ -1,117 +1,75 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE LiberalTypeSynonyms #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeOperators #-}
-#ifdef TRUSTWORTHY
-{-# LANGUAGE Trustworthy #-}
-#endif
-
-
-#ifndef MIN_VERSION_mtl
-#define MIN_VERSION_mtl(x,y,z) 1
-#endif
-
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE KindSignatures #-}
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Lens.Type
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  provisional
 -- Portability :  Rank2Types
 --
--- A @'Lens' s t a b@ is a purely functional reference.
---
--- While a 'Control.Lens.Traversal.Traversal' could be used for
--- 'Control.Lens.Getter.Getting' like a valid 'Control.Lens.Fold.Fold',
--- it wasn't a valid 'Control.Lens.Getter.Getter' as 'Applicative' wasn't a superclass of
--- 'Control.Lens.Getter.Gettable'.
---
--- 'Functor', however is the superclass of both.
---
--- @type 'Lens' s t a b = forall f. 'Functor' f => (a -> f b) -> s -> f t@
---
--- Every 'Lens' is a valid 'Control.Lens.Setter.Setter'.
---
--- Every 'Lens' can be used for 'Control.Lens.Getter.Getting' like a
--- 'Control.Lens.Fold.Fold' that doesn't use the 'Applicative' or
--- 'Control.Lens.Getter.Gettable'.
---
--- Every 'Lens' is a valid 'Control.Lens.Traversal.Traversal' that only uses
--- the 'Functor' part of the 'Applicative' it is supplied.
---
--- Every 'Lens' can be used for 'Control.Lens.Getter.Getting' like a valid
--- 'Control.Lens.Getter.Getter', since 'Functor' is a superclass of 'Control.Lens.Getter.Gettable'
---
--- Since every 'Lens' can be used for 'Control.Lens.Getter.Getting' like a
--- valid 'Control.Lens.Getter.Getter' it follows that it must view exactly one element in the
--- structure.
---
--- The lens laws follow from this property and the desire for it to act like
--- a 'Data.Traversable.Traversable' when used as a
--- 'Control.Lens.Traversal.Traversal'.
---
--- In the examples below, 'getter' and 'setter' are supplied as example getters
--- and setters, and are not actual functions supplied by this package.
+-- This module exports the majority of the types that need to appear in user
+-- signatures or in documentation when talking about lenses. The remaining types
+-- for consuming lenses are distributed across various modules in the hierarchy.
 -------------------------------------------------------------------------------
 module Control.Lens.Type
   (
-  -- * Lenses
-    Lens
+  -- * Other
+    Equality, Equality', As
+  , Iso, Iso'
+  , Prism , Prism'
+  -- * Lenses, Folds and Traversals
+  , Lens, Lens'
+  , Traversal, Traversal'
+  , Traversal1, Traversal1'
+  , Setter, Setter'
+  , Getter, Fold
+  , Fold1
+  , Action, MonadicFold, RelevantMonadicFold
+  -- * Indexed
+  , IndexedLens, IndexedLens'
+  , IndexedTraversal, IndexedTraversal'
+  , IndexedTraversal1, IndexedTraversal1'
+  , IndexedSetter, IndexedSetter'
+  , IndexedGetter, IndexedFold
+  , IndexedFold1
+  , IndexedAction, IndexedMonadicFold
+  , IndexedRelevantMonadicFold
+  -- * Index-Preserving
+  , IndexPreservingLens, IndexPreservingLens'
+  , IndexPreservingTraversal, IndexPreservingTraversal'
+  , IndexPreservingTraversal1, IndexPreservingTraversal1'
+  , IndexPreservingSetter, IndexPreservingSetter'
+  , IndexPreservingGetter, IndexPreservingFold
+  , IndexPreservingFold1
+  , IndexPreservingAction, IndexPreservingMonadicFold
+  , IndexPreservingRelevantMonadicFold
+  -- * Common
   , Simple
-
-  , lens
-  , (%%~)
-  , (%%=)
-
-
-  -- * Lateral Composition
-  , choosing
-  , chosen
-  , alongside
-  , inside
-
-  -- * Setting Functionally with Passthrough
-  , (<%~), (<+~), (<-~), (<*~), (<//~)
-  , (<^~), (<^^~), (<**~)
-  , (<||~), (<&&~), (<<>~)
-  , (<<%~), (<<.~)
-
-  -- * Setting State with Passthrough
-  , (<%=), (<+=), (<-=), (<*=), (<//=)
-  , (<^=), (<^^=), (<**=)
-  , (<||=), (<&&=), (<<>=)
-  , (<<%=), (<<.=)
-  , (<<~)
-
-  -- * Cloning Lenses
-  , cloneLens
-  , ReifiedLens(..)
-
-  -- * Context
-  , Context(..)
-  , locus
-
-  -- * Simplified and In-Progress
-  , LensLike
-  , Overloaded
-  , SimpleLens
-  , SimpleLensLike
-  , SimpleOverloaded
-  , SimpleReifiedLens
+  , LensLike, LensLike'
+  , Over, Over'
+  , IndexedLensLike, IndexedLensLike'
+  , Optical, Optical'
+  , Optic, Optic'
   ) where
 
 import Control.Applicative
-import Control.Comonad.Store as Store
-import Control.Lens.Combinators ((<&>))
-import Control.Lens.Internal (Context(..))
-import Control.Monad.State as State
-import Data.Monoid (Monoid(mappend))
+import Control.Lens.Internal.Action
+import Control.Lens.Internal.Setter
+import Control.Lens.Internal.Indexed
+import Data.Functor.Contravariant
+import Data.Functor.Apply
+import Data.Profunctor
 
 -- $setup
+-- >>> :set -XNoOverloadedStrings
 -- >>> import Control.Lens
 -- >>> import Debug.SimpleReflect.Expr
 -- >>> import Debug.SimpleReflect.Vars as Vars hiding (f,g,h)
@@ -120,12 +78,8 @@ import Data.Monoid (Monoid(mappend))
 -- >>> let h :: Expr -> Expr -> Expr; h = Debug.SimpleReflect.Vars.h
 -- >>> let getter :: Expr -> Expr; getter = fun "getter"
 -- >>> let setter :: Expr -> Expr -> Expr; setter = fun "setter"
-
-infixr 4 %%~
-infix  4 %%=
-infixr 4 <+~, <*~, <-~, <//~, <^~, <^^~, <**~, <&&~, <||~, <<>~, <%~, <<%~, <<.~
-infix  4 <+=, <*=, <-=, <//=, <^=, <^^=, <**=, <&&=, <||=, <<>=, <%=, <<%=, <<.=
-infixr 2 <<~
+-- >>> import Numeric.Natural
+-- >>> let nat :: Prism' Integer Natural; nat = prism toInteger $ \i -> if i < 0 then Left i else Right (fromInteger i)
 
 -------------------------------------------------------------------------------
 -- Lenses
@@ -135,88 +89,517 @@ infixr 2 <<~
 -- <http://comonad.com/reader/2012/mirrored-lenses/>.
 --
 -- With great power comes great responsibility and a 'Lens' is subject to the
--- three common sense lens laws:
+-- three common sense 'Lens' laws:
 --
 -- 1) You get back what you put in:
 --
--- @'Control.Lens.Getter.view' l ('Control.Lens.Setter.set' l b a)  ≡ b@
+-- @
+-- 'Control.Lens.Getter.view' l ('Control.Lens.Setter.set' l v s)  ≡ v
+-- @
 --
 -- 2) Putting back what you got doesn't change anything:
 --
--- @'Control.Lens.Setter.set' l ('Control.Lens.Getter.view' l a) a  ≡ a@
+-- @
+-- 'Control.Lens.Setter.set' l ('Control.Lens.Getter.view' l s) s  ≡ s
+-- @
 --
 -- 3) Setting twice is the same as setting once:
 --
--- @'Control.Lens.Setter.set' l c ('Control.Lens.Setter.set' l b a) ≡ 'Control.Lens.Setter.set' l c a@
+-- @
+-- 'Control.Lens.Setter.set' l v' ('Control.Lens.Setter.set' l v s) ≡ 'Control.Lens.Setter.set' l v' s
+-- @
 --
 -- These laws are strong enough that the 4 type parameters of a 'Lens' cannot
 -- vary fully independently. For more on how they interact, read the \"Why is
 -- it a Lens Family?\" section of
 -- <http://comonad.com/reader/2012/mirrored-lenses/>.
 --
--- Every 'Lens' can be used directly as a 'Control.Lens.Setter.Setter' or
--- 'Control.Lens.Traversal.Traversal'.
+-- There are some emergent properties of these laws:
+--
+-- 1) @'Control.Lens.Setter.set' l s@ must be injective for every @s@ This is a consequence of law #1
+--
+-- 2) @'Control.Lens.Setter.set' l@ must be surjective, because of law #2, which indicates that it is possible to obtain any 'v' from some 's' such that @'Control.Lens.Setter.set' s v = s@
+--
+-- 3) Given just the first two laws you can prove a weaker form of law #3 where the values @v@ that you are setting match:
+--
+-- @
+-- 'Control.Lens.Setter.set' l v ('Control.Lens.Setter.set' l v s) ≡ 'Control.Lens.Setter.set' l v s
+-- @
+--
+-- Every 'Lens' can be used directly as a 'Control.Lens.Setter.Setter' or 'Traversal'.
 --
 -- You can also use a 'Lens' for 'Control.Lens.Getter.Getting' as if it were a
--- 'Control.Lens.Fold.Fold' or 'Control.Lens.Getter.Getter'.
+-- 'Fold' or 'Getter'.
 --
--- Since every lens is a valid 'Control.Lens.Traversal.Traversal', the
--- traversal laws are required of any lenses you create:
+-- Since every 'Lens' is a valid 'Traversal', the
+-- 'Traversal' laws are required of any 'Lens' you create:
 --
 -- @
 -- l 'pure' ≡ 'pure'
 -- 'fmap' (l f) '.' l g ≡ 'Data.Functor.Compose.getCompose' '.' l ('Data.Functor.Compose.Compose' '.' 'fmap' f '.' g)
 -- @
 --
--- @type 'Lens' s t a b = forall f. 'Functor' f => 'LensLike' f s t a b@
+-- @
+-- type 'Lens' s t a b = forall f. 'Functor' f => 'LensLike' f s t a b
+-- @
 type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
 
--- | A 'Simple' 'Lens', 'Simple' 'Control.Lens.Traversal.Traversal', ... can
--- be used instead of a 'Lens','Control.Lens.Traversal.Traversal', ...
+-- | @
+-- type 'Lens'' = 'Simple' 'Lens'
+-- @
+type Lens' s a = Lens s s a a
+
+-- | Every 'IndexedLens' is a valid 'Lens' and a valid 'Control.Lens.Traversal.IndexedTraversal'.
+type IndexedLens i s t a b = forall f p. (Indexable i p, Functor f) => p a (f b) -> s -> f t
+
+-- | @
+-- type 'IndexedLens'' i = 'Simple' ('IndexedLens' i)
+-- @
+type IndexedLens' i s a = IndexedLens i s s a a
+
+-- | An 'IndexPreservingLens' leaves any index it is composed with alone.
+type IndexPreservingLens s t a b = forall p f. (Conjoined p, Functor f) => p a (f b) -> p s (f t)
+
+-- | @
+-- type 'IndexPreservingLens'' = 'Simple' 'IndexPreservingLens'
+-- @
+type IndexPreservingLens' s a = IndexPreservingLens s s a a
+
+------------------------------------------------------------------------------
+-- Traversals
+------------------------------------------------------------------------------
+
+-- | A 'Traversal' can be used directly as a 'Control.Lens.Setter.Setter' or a 'Fold' (but not as a 'Lens') and provides
+-- the ability to both read and update multiple fields, subject to some relatively weak 'Traversal' laws.
+--
+-- These have also been known as multilenses, but they have the signature and spirit of
+--
+-- @
+-- 'Data.Traversable.traverse' :: 'Data.Traversable.Traversable' f => 'Traversal' (f a) (f b) a b
+-- @
+--
+-- and the more evocative name suggests their application.
+--
+-- Most of the time the 'Traversal' you will want to use is just 'Data.Traversable.traverse', but you can also pass any
+-- 'Lens' or 'Iso' as a 'Traversal', and composition of a 'Traversal' (or 'Lens' or 'Iso') with a 'Traversal' (or 'Lens' or 'Iso')
+-- using ('.') forms a valid 'Traversal'.
+--
+-- The laws for a 'Traversal' @t@ follow from the laws for 'Data.Traversable.Traversable' as stated in \"The Essence of the Iterator Pattern\".
+--
+-- @
+-- t 'pure' ≡ 'pure'
+-- 'fmap' (t f) '.' t g ≡ 'Data.Functor.Compose.getCompose' '.' t ('Data.Functor.Compose.Compose' '.' 'fmap' f '.' g)
+-- @
+--
+-- One consequence of this requirement is that a 'Traversal' needs to leave the same number of elements as a
+-- candidate for subsequent 'Traversal' that it started with. Another testament to the strength of these laws
+-- is that the caveat expressed in section 5.5 of the \"Essence of the Iterator Pattern\" about exotic
+-- 'Data.Traversable.Traversable' instances that 'Data.Traversable.traverse' the same entry multiple times was actually already ruled out by the
+-- second law in that same paper!
+type Traversal s t a b = forall f. Applicative f => (a -> f b) -> s -> f t
+
+-- | @
+-- type 'Traversal'' = 'Simple' 'Traversal'
+-- @
+type Traversal' s a = Traversal s s a a
+
+type Traversal1 s t a b = forall f. Apply f => (a -> f b) -> s -> f t
+type Traversal1' s a = Traversal1 s s a a
+
+-- | Every 'IndexedTraversal' is a valid 'Control.Lens.Traversal.Traversal' or
+-- 'Control.Lens.Fold.IndexedFold'.
+--
+-- The 'Indexed' constraint is used to allow an 'IndexedTraversal' to be used
+-- directly as a 'Control.Lens.Traversal.Traversal'.
+--
+-- The 'Control.Lens.Traversal.Traversal' laws are still required to hold.
+--
+-- In addition, the index @i@ should satisfy the requirement that it stays
+-- unchanged even when modifying the value @a@, otherwise traversals like
+-- 'indices' break the 'Traversal' laws.
+type IndexedTraversal i s t a b = forall p f. (Indexable i p, Applicative f) => p a (f b) -> s -> f t
+
+-- | @
+-- type 'IndexedTraversal'' i = 'Simple' ('IndexedTraversal' i)
+-- @
+type IndexedTraversal' i s a = IndexedTraversal i s s a a
+
+type IndexedTraversal1 i s t a b = forall p f. (Indexable i p, Apply f) => p a (f b) -> s -> f t
+type IndexedTraversal1' i s a = IndexedTraversal1 i s s a a
+
+-- | An 'IndexPreservingLens' leaves any index it is composed with alone.
+type IndexPreservingTraversal s t a b = forall p f. (Conjoined p, Applicative f) => p a (f b) -> p s (f t)
+
+-- | @
+-- type 'IndexPreservingTraversal'' = 'Simple' 'IndexPreservingTraversal'
+-- @
+type IndexPreservingTraversal' s a = IndexPreservingTraversal s s a a
+
+type IndexPreservingTraversal1 s t a b = forall p f. (Conjoined p, Apply f) => p a (f b) -> p s (f t)
+type IndexPreservingTraversal1' s a = IndexPreservingTraversal1 s s a a
+
+------------------------------------------------------------------------------
+-- Setters
+------------------------------------------------------------------------------
+
+-- | The only 'LensLike' law that can apply to a 'Setter' @l@ is that
+--
+-- @
+-- 'Control.Lens.Setter.set' l y ('Control.Lens.Setter.set' l x a) ≡ 'Control.Lens.Setter.set' l y a
+-- @
+--
+-- You can't 'Control.Lens.Getter.view' a 'Setter' in general, so the other two laws are irrelevant.
+--
+-- However, two 'Functor' laws apply to a 'Setter':
+--
+-- @
+-- 'Control.Lens.Setter.over' l 'id' ≡ 'id'
+-- 'Control.Lens.Setter.over' l f '.' 'Control.Lens.Setter.over' l g ≡ 'Control.Lens.Setter.over' l (f '.' g)
+-- @
+--
+-- These can be stated more directly:
+--
+-- @
+-- l 'pure' ≡ 'pure'
+-- l f '.' 'untainted' '.' l g ≡ l (f '.' 'untainted' '.' g)
+-- @
+--
+-- You can compose a 'Setter' with a 'Lens' or a 'Traversal' using ('.') from the @Prelude@
+-- and the result is always only a 'Setter' and nothing more.
+--
+-- >>> over traverse f [a,b,c,d]
+-- [f a,f b,f c,f d]
+--
+-- >>> over _1 f (a,b)
+-- (f a,b)
+--
+-- >>> over (traverse._1) f [(a,b),(c,d)]
+-- [(f a,b),(f c,d)]
+--
+-- >>> over both f (a,b)
+-- (f a,f b)
+--
+-- >>> over (traverse.both) f [(a,b),(c,d)]
+-- [(f a,f b),(f c,f d)]
+type Setter s t a b = forall f. Settable f => (a -> f b) -> s -> f t
+
+-- | A 'Setter'' is just a 'Setter' that doesn't change the types.
+--
+-- These are particularly common when talking about monomorphic containers. /e.g./
+--
+-- @
+-- 'sets' Data.Text.map :: 'Setter'' 'Data.Text.Internal.Text' 'Char'
+-- @
+--
+-- @
+-- type 'Setter'' = 'Setter''
+-- @
+type Setter' s a = Setter s s a a
+
+-- | Every 'IndexedSetter' is a valid 'Setter'.
+--
+-- The 'Setter' laws are still required to hold.
+type IndexedSetter i s t a b = forall f p.
+  (Indexable i p, Settable f) => p a (f b) -> s -> f t
+
+-- | @
+-- type 'IndexedSetter'' i = 'Simple' ('IndexedSetter' i)
+-- @
+type IndexedSetter' i s a = IndexedSetter i s s a a
+
+-- | An 'IndexPreservingSetter' can be composed with a 'IndexedSetter', 'IndexedTraversal' or 'IndexedLens'
+-- and leaves the index intact, yielding an 'IndexedSetter'.
+type IndexPreservingSetter s t a b = forall p f. (Conjoined p, Settable f) => p a (f b) -> p s (f t)
+
+-- | @
+-- type 'IndexedPreservingSetter'' i = 'Simple' 'IndexedPreservingSetter'
+-- @
+type IndexPreservingSetter' s a = IndexPreservingSetter s s a a
+
+-----------------------------------------------------------------------------
+-- Isomorphisms
+-----------------------------------------------------------------------------
+
+-- | Isomorphism families can be composed with another 'Lens' using ('.') and 'id'.
+--
+-- Note: Composition with an 'Iso' is index- and measure- preserving.
+type Iso s t a b = forall p f. (Profunctor p, Functor f) => p a (f b) -> p s (f t)
+
+-- | @
+-- type 'Iso'' = 'Control.Lens.Type.Simple' 'Iso'
+-- @
+type Iso' s a = Iso s s a a
+
+------------------------------------------------------------------------------
+-- Prism Internals
+------------------------------------------------------------------------------
+
+-- | A 'Prism' @l@ is a 'Traversal' that can also be turned
+-- around with 'Control.Lens.Review.re' to obtain a 'Getter' in the
+-- opposite direction.
+--
+-- There are two laws that a 'Prism' should satisfy:
+--
+-- First, if I 'Control.Lens.Review.re' or 'Control.Lens.Prism.review' a value with a 'Prism' and then 'Control.Lens.Fold.preview' or use ('Control.Lens.Fold.^?'), I will get it back:
+--
+-- @
+-- 'Control.Lens.Fold.preview' l ('Control.Lens.Prism.review' l b) ≡ 'Just' b
+-- @
+--
+-- Second, if you can extract a value @a@ using a 'Prism' @l@ from a value @s@, then the value @s@ is completely described my @l@ and @a@:
+--
+-- If @'Control.Lens.Fold.preview' l s ≡ 'Just' a@ then @'Control.Lens.Prism.review' l a ≡ s@
+--
+-- These two laws imply that the 'Traversal' laws hold for every 'Prism' and that we 'Data.Traversable.traverse' at most 1 element:
+--
+-- @
+-- 'Control.Lens.Fold.lengthOf' l x '<=' 1
+-- @
+--
+-- It may help to think of this as a 'Iso' that can be partial in one direction.
+--
+-- Every 'Prism' is a valid 'Traversal'.
+--
+-- Every 'Iso' is a valid 'Prism'.
+--
+-- For example, you might have a @'Prism'' 'Integer' 'Numeric.Natural.Natural'@ allows you to always
+-- go from a 'Numeric.Natural.Natural' to an 'Integer', and provide you with tools to check if an 'Integer' is
+-- a 'Numeric.Natural.Natural' and/or to edit one if it is.
+--
+--
+-- @
+-- 'nat' :: 'Prism'' 'Integer' 'Numeric.Natural.Natural'
+-- 'nat' = 'Control.Lens.Prism.prism' 'toInteger' '$' \\ i ->
+--    if i '<' 0
+--    then 'Left' i
+--    else 'Right' ('fromInteger' i)
+-- @
+--
+-- Now we can ask if an 'Integer' is a 'Numeric.Natural.Natural'.
+--
+-- >>> 5^?nat
+-- Just 5
+--
+-- >>> (-5)^?nat
+-- Nothing
+--
+-- We can update the ones that are:
+--
+-- >>> (-3,4) & both.nat *~ 2
+-- (-3,8)
+--
+-- And we can then convert from a 'Numeric.Natural.Natural' to an 'Integer'.
+--
+-- >>> 5 ^. re nat -- :: Natural
+-- 5
+--
+-- Similarly we can use a 'Prism' to 'Data.Traversable.traverse' the 'Left' half of an 'Either':
+--
+-- >>> Left "hello" & _Left %~ length
+-- Left 5
+--
+-- or to construct an 'Either':
+--
+-- >>> 5^.re _Left
+-- Left 5
+--
+-- such that if you query it with the 'Prism', you will get your original input back.
+--
+-- >>> 5^.re _Left ^? _Left
+-- Just 5
+--
+-- Another interesting way to think of a 'Prism' is as the categorical dual of a 'Lens'
+-- -- a co-'Lens', so to speak. This is what permits the construction of 'Control.Lens.Prism.outside'.
+--
+-- Note: Composition with a 'Prism' is index-preserving.
+type Prism s t a b = forall p f. (Choice p, Applicative f) => p a (f b) -> p s (f t)
+
+-- | A 'Simple' 'Prism'.
+type Prism' s a = Prism s s a a
+
+-------------------------------------------------------------------------------
+-- Equality
+-------------------------------------------------------------------------------
+
+-- | A witness that @(a ~ s, b ~ t)@.
+--
+-- Note: Composition with an 'Equality' is index-preserving.
+type Equality s t a b = forall p (f :: * -> *). p a (f b) -> p s (f t)
+
+-- | A 'Simple' 'Equality'.
+type Equality' s a = Equality s s a a
+
+-- | Composable `asTypeOf`. Useful for constraining excess
+-- polymorphism, @foo . (id :: As Int) . bar@.
+type As a = Equality' a a
+
+-------------------------------------------------------------------------------
+-- Getters
+-------------------------------------------------------------------------------
+
+-- | A 'Getter' describes how to retrieve a single value in a way that can be
+-- composed with other 'LensLike' constructions.
+--
+-- Unlike a 'Lens' a 'Getter' is read-only. Since a 'Getter'
+-- cannot be used to write back there are no 'Lens' laws that can be applied to
+-- it. In fact, it is isomorphic to an arbitrary function from @(s -> a)@.
+--
+-- Moreover, a 'Getter' can be used directly as a 'Control.Lens.Fold.Fold',
+-- since it just ignores the 'Applicative'.
+type Getter s a = forall f. (Contravariant f, Functor f) => (a -> f a) -> s -> f s
+
+-- | Every 'IndexedGetter' is a valid 'Control.Lens.Fold.IndexedFold' and can be used for 'Control.Lens.Getter.Getting' like a 'Getter'.
+type IndexedGetter i s a = forall p f. (Indexable i p, Contravariant f, Functor f) => p a (f a) -> s -> f s
+
+-- | An 'IndexPreservingGetter' can be used as a 'Getter', but when composed with an 'IndexedTraversal',
+-- 'IndexedFold', or 'IndexedLens' yields an 'IndexedFold', 'IndexedFold' or 'IndexedGetter' respectively.
+type IndexPreservingGetter s a = forall p f. (Conjoined p, Contravariant f, Functor f) => p a (f a) -> p s (f s)
+
+--------------------------
+-- Folds
+--------------------------
+
+-- | A 'Fold' describes how to retrieve multiple values in a way that can be composed
+-- with other 'LensLike' constructions.
+--
+-- A @'Fold' s a@ provides a structure with operations very similar to those of the 'Data.Foldable.Foldable'
+-- typeclass, see 'Control.Lens.Fold.foldMapOf' and the other 'Fold' combinators.
+--
+-- By convention, if there exists a 'foo' method that expects a @'Data.Foldable.Foldable' (f a)@, then there should be a
+-- @fooOf@ method that takes a @'Fold' s a@ and a value of type @s@.
+--
+-- A 'Getter' is a legal 'Fold' that just ignores the supplied 'Data.Monoid.Monoid'.
+--
+-- Unlike a 'Control.Lens.Traversal.Traversal' a 'Fold' is read-only. Since a 'Fold' cannot be used to write back
+-- there are no 'Lens' laws that apply.
+type Fold s a = forall f. (Contravariant f, Applicative f) => (a -> f a) -> s -> f s
+
+-- | Every 'IndexedFold' is a valid 'Control.Lens.Fold.Fold' and can be used for 'Control.Lens.Getter.Getting'.
+type IndexedFold i s a = forall p f.  (Indexable i p, Contravariant f, Applicative f) => p a (f a) -> s -> f s
+
+-- | An 'IndexPreservingFold' can be used as a 'Fold', but when composed with an 'IndexedTraversal',
+-- 'IndexedFold', or 'IndexedLens' yields an 'IndexedFold' respectively.
+type IndexPreservingFold s a = forall p f. (Conjoined p, Contravariant f, Applicative f) => p a (f a) -> p s (f s)
+
+-- | A relevant Fold (aka 'Fold1') has one or more targets.
+type Fold1 s a = forall f. (Contravariant f, Apply f) => (a -> f a) -> s -> f s
+type IndexedFold1 i s a = forall p f.  (Indexable i p, Contravariant f, Apply f) => p a (f a) -> s -> f s
+type IndexPreservingFold1 s a = forall p f. (Conjoined p, Contravariant f, Apply f) => p a (f a) -> p s (f s)
+
+-------------------------------------------------------------------------------
+-- Actions
+-------------------------------------------------------------------------------
+
+-- | An 'Action' is a 'Getter' enriched with access to a 'Monad' for side-effects.
+--
+-- Every 'Getter' can be used as an 'Action'.
+--
+-- You can compose an 'Action' with another 'Action' using ('Prelude..') from the @Prelude@.
+type Action m s a = forall f r. Effective m r f => (a -> f a) -> s -> f s
+
+-- | An 'IndexedAction' is an 'IndexedGetter' enriched with access to a 'Monad' for side-effects.
+--
+-- Every 'Getter' can be used as an 'Action'.
+--
+-- You can compose an 'Action' with another 'Action' using ('Prelude..') from the @Prelude@.
+type IndexedAction i m s a = forall p f r. (Indexable i p, Effective m r f) => p a (f a) -> s -> f s
+
+-- | An 'IndexPreservingAction' can be used as a 'Action', but when composed with an 'IndexedTraversal',
+-- 'IndexedFold', or 'IndexedLens' yields an 'IndexedMonadicFold', 'IndexedMonadicFold' or 'IndexedAction' respectively.
+type IndexPreservingAction m s a = forall p f r. (Conjoined p, Effective m r f) => p a (f a) -> p s (f s)
+
+-------------------------------------------------------------------------------
+-- MonadicFolds
+-------------------------------------------------------------------------------
+
+-- | A 'MonadicFold' is a 'Fold' enriched with access to a 'Monad' for side-effects.
+--
+-- A 'MonadicFold' can use side-effects to produce parts of the structure being folded (e.g. reading them from file).
+--
+-- Every 'Fold' can be used as a 'MonadicFold', that simply ignores the access to the 'Monad'.
+--
+-- You can compose a 'MonadicFold' with another 'MonadicFold' using ('Prelude..') from the @Prelude@.
+type MonadicFold m s a = forall f r. (Effective m r f, Applicative f) => (a -> f a) -> s -> f s
+type RelevantMonadicFold m s a = forall f r. (Effective m r f, Apply f) => (a -> f a) -> s -> f s
+
+-- | An 'IndexedMonadicFold' is an 'IndexedFold' enriched with access to a 'Monad' for side-effects.
+--
+-- Every 'IndexedFold' can be used as an 'IndexedMonadicFold', that simply ignores the access to the 'Monad'.
+--
+-- You can compose an 'IndexedMonadicFold' with another 'IndexedMonadicFold' using ('Prelude..') from the @Prelude@.
+type IndexedMonadicFold i m s a = forall p f r. (Indexable i p, Effective m r f, Applicative f) => p a (f a) -> s -> f s
+type IndexedRelevantMonadicFold i m s a = forall p f r. (Indexable i p, Effective m r f, Apply f) => p a (f a) -> s -> f s
+
+-- | An 'IndexPreservingFold' can be used as a 'Fold', but when composed with an 'IndexedTraversal',
+-- 'IndexedFold', or 'IndexedLens' yields an 'IndexedFold' respectively.
+type IndexPreservingMonadicFold m s a = forall p f r. (Conjoined p, Effective m r f, Applicative f) => p a (f a) -> p s (f s)
+type IndexPreservingRelevantMonadicFold m s a = forall p f r. (Conjoined p, Effective m r f, Apply f) => p a (f a) -> p s (f s)
+
+-------------------------------------------------------------------------------
+-- Simple Overloading
+-------------------------------------------------------------------------------
+
+-- | A 'Simple' 'Lens', 'Simple' 'Traversal', ... can
+-- be used instead of a 'Lens','Traversal', ...
 -- whenever the type variables don't change upon setting a value.
 --
 -- @
--- 'Data.Complex.Lens.imaginary' :: 'Simple' 'Lens' ('Data.Complex.Complex' a) a
--- 'Data.List.Lens.traverseHead' :: 'Simple' 'Control.Lens.Lens.Traversal' [a] a
+-- 'Data.Complex.Lens._imagPart' :: 'Simple' 'Lens' ('Data.Complex.Complex' a) a
+-- 'Control.Lens.Traversal.traversed' :: 'Simple' ('IndexedTraversal' 'Int') [a] a
 -- @
 --
 -- Note: To use this alias in your own code with @'LensLike' f@ or
--- 'Control.Lens.Setter.Setter', you may have to turn on @LiberalTypeSynonyms@.
+-- 'Setter', you may have to turn on @LiberalTypeSynonyms@.
+--
+-- This is commonly abbreviated as a \"prime\" marker, /e.g./ 'Lens'' = 'Simple' 'Lens'.
 type Simple f s a = f s s a a
 
--- | @type 'SimpleLens' = 'Simple' 'Lens'@
-type SimpleLens s a = Lens s s a a
-
--- | @type 'SimpleLensLike' f = 'Simple' ('LensLike' f)@
-type SimpleLensLike f s a = LensLike f s s a a
-
---------------------------
--- Constructing Lenses
---------------------------
-
--- | Build a 'Lens' from a getter and a setter.
---
--- @'lens' :: 'Functor' f => (s -> a) -> (s -> b -> t) -> (a -> f b) -> s -> f t@
---
--- >>> s ^. lens getter setter
--- getter s
---
--- >>> s & lens getter setter .~ b
--- setter s b
---
--- >>> s & lens getter setter %~ f
--- setter s (f (getter s))
-lens :: (s -> a) -> (s -> b -> t) -> Lens s t a b
-lens sa sbt afb s = sbt s <$> afb (sa s)
-{-# INLINE lens #-}
-
 -------------------------------------------------------------------------------
--- LensLike
+-- Optics
 -------------------------------------------------------------------------------
 
--- |
--- Many combinators that accept a 'Lens' can also accept a
--- 'Control.Lens.Traversal.Traversal' in limited situations.
+-- | A valid 'Optic' @l@ should satisfy the laws:
+--
+-- @
+-- l 'pure' ≡ 'pure'
+-- l ('Procompose' f g) = 'Procompose' (l f) (l g)
+-- @
+--
+-- This gives rise to the laws for 'Equality', 'Iso', 'Prism', 'Lens',
+-- 'Traversal', 'Traversal1', 'Setter', 'Fold', 'Fold1', and 'Getter' as well
+-- along with their index-preserving variants.
+--
+-- @
+-- type 'LensLike' f s t a b = 'Optic' (->) f s t a b
+-- @
+type Optic p f s t a b = p a (f b) -> p s (f t)
+
+-- | @
+-- type 'Optic'' p q f s a = 'Simple' ('Optic' p q f) s a
+-- @
+type Optic' p f s a = Optic p f s s a a
+
+-- | @
+-- type 'LensLike' f s t a b = 'Optical' (->) (->) f s t a b
+-- @
+--
+-- @
+-- type 'Over' p f s t a b = 'Optical' p (->) f s t a b
+-- @
+--
+-- @
+-- type 'Optic' p f s t a b = 'Optical' p p f s t a b
+-- @
+type Optical p q f s t a b = p a (f b) -> q s (f t)
+
+-- | @
+-- type 'Optical'' p q f s a = 'Simple' ('Optical' p q f) s a
+-- @
+type Optical' p q f s a = Optical p q f s s a a
+
+
+-- | Many combinators that accept a 'Lens' can also accept a
+-- 'Traversal' in limited situations.
 --
 -- They do so by specializing the type of 'Functor' that they require of the
 -- caller.
@@ -225,553 +608,26 @@ lens sa sbt afb s = sbt s <$> afb (sa s)
 -- then they may be passed a 'Lens'.
 --
 -- Further, if @f@ is an 'Applicative', they may also be passed a
--- 'Control.Lens.Traversal.Traversal'.
+-- 'Traversal'.
 type LensLike f s t a b = (a -> f b) -> s -> f t
 
--- | ('%%~') can be used in one of two scenarios:
---
--- When applied to a 'Lens', it can edit the target of the 'Lens' in a
--- structure, extracting a functorial result.
---
--- When applied to a 'Control.Lens.Traversal.Traversal', it can edit the
--- targets of the 'Traversals', extracting an applicative summary of its
--- actions.
---
--- For all that the definition of this combinator is just:
---
--- @('%%~') ≡ 'id'@
---
+-- | @
+-- type 'LensLike'' f = 'Simple' ('LensLike' f)
 -- @
--- ('%%~') :: 'Functor' f =>     'Control.Lens.Iso.Iso' s t a b       -> (a -> f b) -> s -> f t
--- ('%%~') :: 'Functor' f =>     'Lens' s t a b      -> (a -> f b) -> s -> f t
--- ('%%~') :: 'Applicative' f => 'Control.Lens.Traversal.Traversal' s t a b -> (a -> f b) -> s -> f t
--- @
---
--- It may be beneficial to think about it as if it had these even more
--- restrictive types, however:
---
--- When applied to a 'Control.Lens.Traversal.Traversal', it can edit the
--- targets of the 'Traversals', extracting a supplemental monoidal summary
--- of its actions, by choosing @f = ((,) m)@
---
--- @
--- ('%%~') ::             'Control.Lens.Iso.Iso' s t a b       -> (a -> (r, b)) -> s -> (r, t)
--- ('%%~') ::             'Lens' s t a b      -> (a -> (r, b)) -> s -> (r, t)
--- ('%%~') :: 'Monoid' m => 'Control.Lens.Traversal.Traversal' s t a b -> (a -> (m, b)) -> s -> (m, t)
--- @
-(%%~) :: LensLike f s t a b -> (a -> f b) -> s -> f t
-(%%~) = id
-{-# INLINE (%%~) #-}
+type LensLike' f s a = LensLike f s s a a
 
--- | Modify the target of a 'Lens' in the current state returning some extra
--- information of type @r@ or modify all targets of a
--- 'Control.Lens.Traversal.Traversal' in the current state, extracting extra
--- information of type @r@ and return a monoidal summary of the changes.
---
--- >>> runState (_1 %%= \x -> (f x, g x)) (a,b)
--- (f a,(g a,b))
---
--- @('%%=') ≡ ('state' '.')@
---
--- It may be useful to think of ('%%='), instead, as having either of the
--- following more restricted type signatures:
---
--- @
--- ('%%=') :: 'MonadState' s m             => 'Control.Lens.Iso.Iso' s s a b       -> (a -> (r, b)) -> m r
--- ('%%=') :: 'MonadState' s m             => 'Lens' s s a b      -> (a -> (r, b)) -> m r
--- ('%%=') :: ('MonadState' s m, 'Monoid' r) => 'Control.Lens.Traversal.Traversal' s s a b -> (a -> (r, b)) -> m r
--- @
-(%%=) :: MonadState s m => LensLike ((,) r) s s a b -> (a -> (r, b)) -> m r
-#if MIN_VERSION_mtl(2,1,1)
-l %%= f = State.state (l f)
-#else
-l %%= f = do
-  (r, s) <- State.gets (l f)
-  State.put s
-  return r
-#endif
-{-# INLINE (%%=) #-}
+-- | Convenient alias for constructing indexed lenses and their ilk.
+type IndexedLensLike i f s t a b = forall p. Indexable i p => p a (f b) -> s -> f t
 
--------------------------------------------------------------------------------
--- Common Lenses
--------------------------------------------------------------------------------
+-- | Convenient alias for constructing simple indexed lenses and their ilk.
+type IndexedLensLike' i f s a = IndexedLensLike i f s s a a
 
--- | Lift a 'Lens' so it can run under a function.
---
-inside :: LensLike (Context a b) s t a b -> Lens (e -> s) (e -> t) (e -> a) (e -> b)
-inside l f es = o <$> f i where
-  i e = case l (Context id) (es e) of Context _ a -> a
-  o ea e = case l (Context id) (es e) of Context k _ -> k (ea e)
+-- | This is a convenient alias for use when you need to consume either indexed or non-indexed lens-likes based on context.
+type Over p f s t a b = p a (f b) -> s -> f t
 
--- | Merge two lenses, getters, setters, folds or traversals.
---
--- @'chosen' ≡ 'choosing' 'id' 'id'@
+-- | This is a convenient alias for use when you need to consume either indexed or non-indexed lens-likes based on context.
 --
 -- @
--- 'choosing' :: 'Control.Lens.Getter.Getter' s a           -> 'Control.Lens.Getter.Getter' s' a           -> 'Control.Lens.Getter.Getter' ('Either' s s') a
--- 'choosing' :: 'Control.Lens.Fold.Fold' s a             -> 'Control.Lens.Fold.Fold' s' a             -> 'Control.Lens.Fold.Fold' ('Either' s s') a
--- 'choosing' :: 'Simple' 'Lens' s a      -> 'Simple' 'Lens' s' a      -> 'Simple' 'Lens' ('Either' s s') a
--- 'choosing' :: 'Simple' 'Control.Lens.Traversal.Traversal' s a -> 'Simple' 'Control.Lens.Traversal.Traversal' s' a -> 'Simple' 'Control.Lens.Traversal.Traversal' ('Either' s s') a
--- 'choosing' :: 'Simple' 'Control.Lens.Setter.Setter' s a    -> 'Simple' 'Control.Lens.Setter.Setter' s' a    -> 'Simple' 'Control.Lens.Setter.Setter' ('Either' s s') a
+-- type 'Over'' p f = 'Simple' ('Over' p f)
 -- @
-choosing :: Functor f
-       => LensLike f s t a a
-       -> LensLike f s' t' a a
-       -> LensLike f (Either s s') (Either t t') a a
-choosing l _ f (Left a)   = Left <$> l f a
-choosing _ r f (Right a') = Right <$> r f a'
-{-# INLINE choosing #-}
-
--- | This is a 'Lens' that updates either side of an 'Either', where both sides have the same type.
---
--- @'chosen' ≡ 'choosing' 'id' 'id'@
---
--- >>> Left a^.chosen
--- a
---
--- >>> Right a^.chosen
--- a
---
--- >>> Right "hello"^.chosen
--- "hello"
---
--- >>> Right a & chosen *~ b
--- Right (a * b)
-chosen :: Lens (Either a a) (Either b b) a b
-chosen f (Left a) = Left <$> f a
-chosen f (Right a) = Right <$> f a
-{-# INLINE chosen #-}
-
--- | 'alongside' makes a 'Lens' from two other lenses.
---
--- >>> (Left a, Right b)^.alongside chosen chosen
--- (a,b)
---
--- >>> (Left a, Right b) & alongside chosen chosen .~ (c,d)
--- (Left c,Right d)
---
--- @'alongside' :: 'Lens' s t a b -> 'Lens' s' t' a' b' -> 'Lens' (s,s') (t,t') (a,a') (b,b')@
-alongside :: LensLike (Context a b) s t a b
-           -> LensLike (Context a' b')  s' t' a' b'
-           -> Lens (s,s') (t,t') (a,a') (b,b')
-alongside l r f (s, s') = case l (Context id) s of
-  Context bt a -> case r (Context id) s' of
-    Context bt' a' -> f (a,a') <&> \(b,b') -> (bt b, bt' b')
-{-# INLINE alongside #-}
-
--- | This 'Lens' lets you 'view' the current 'pos' of any 'Store'
--- 'Comonad' and 'seek' to a new position. This reduces the API
--- for working with a 'ComonadStore' instances to a single 'Lens'.
---
--- @
--- 'pos' w ≡ w '^.' 'locus'
--- 'seek' s w ≡ w '&' 'locus' '.~' s
--- 'seeks' f w ≡ w '&' 'locus' '%~' f
--- @
---
--- @
--- 'locus' :: Simple Lens ('Context' s s a) s
--- @
-locus :: ComonadStore s w => Simple Lens (w a) s
-locus f w = (`seek` w) <$> f (pos w)
-
--------------------------------------------------------------------------------
--- Cloning Lenses
--------------------------------------------------------------------------------
-
--- |
--- Cloning a 'Lens' is one way to make sure you aren't given
--- something weaker, such as a 'Control.Lens.Traversal.Traversal' and can be
--- used as a way to pass around lenses that have to be monomorphic in @f@.
---
--- Note: This only accepts a proper 'Lens'.
---
--- > :t let example l x = set (cloneLens l) (x^.cloneLens l + 1) x in example
--- > let example l x = set (cloneLens l) (x^.cloneLens l + 1) x in example
--- >   :: Num b => LensLike (Context b b) s t b b -> s -> t
-cloneLens :: Functor f
-  => LensLike (Context a b) s t a b
-  -> (a -> f b) -> s -> f t
-cloneLens f afb s = case f (Context id) s of
-  Context bt a -> bt <$> afb a
-{-# INLINE cloneLens #-}
-
--------------------------------------------------------------------------------
--- Overloading function application
--------------------------------------------------------------------------------
-
--- | @type 'LensLike' f s t a b = 'Overloaded' (->) f s t a b@
-type Overloaded k f s t a b = k (a -> f b) (s -> f t)
-
--- | @type 'SimpleOverloaded' k f s a = 'Simple' ('Overloaded' k f) s a@
-type SimpleOverloaded k f s a = Overloaded k f s s a a
-
--------------------------------------------------------------------------------
--- Setting and Remembering
--------------------------------------------------------------------------------
-
--- | Modify the target of a 'Lens' and return the result
---
--- When you do not need the result of the addition, ('Control.Lens.Setter.%~') is more flexible.
---
--- @
--- ('<%~') ::             'Lens' s t a b      -> (a -> b) -> s -> (b, t)
--- ('<%~') ::             'Control.Lens.Iso.Iso' s t a b       -> (a -> b) -> s -> (b, t)
--- ('<%~') :: 'Monoid' b => 'Control.Lens.Traversal.Traversal' s t a b -> (a -> b) -> s -> (b, t)
--- @
-(<%~) :: LensLike ((,)b) s t a b -> (a -> b) -> s -> (b, t)
-l <%~ f = l $ \s -> let t = f s in (t, t)
-{-# INLINE (<%~) #-}
-
--- | Increment the target of a numerically valued 'Lens' and return the result
---
--- When you do not need the result of the addition, ('Control.Lens.Setter.+~') is more flexible.
---
--- @
--- ('<+~') :: 'Num' a => 'Simple' 'Lens' s a -> a -> s -> (a, s)
--- ('<+~') :: 'Num' a => 'Simple' 'Control.Lens.Iso.Iso' s a  -> a -> s -> (a, s)
--- @
-(<+~) :: Num a => LensLike ((,)a) s t a a -> a -> s -> (a, t)
-l <+~ a = l <%~ (+ a)
-{-# INLINE (<+~) #-}
-
--- | Decrement the target of a numerically valued 'Lens' and return the result
---
--- When you do not need the result of the subtraction, ('Control.Lens.Setter.-~') is more flexible.
---
--- @
--- ('<-~') :: 'Num' a => 'Simple' 'Lens' s a -> a -> s -> (a, s)
--- ('<-~') :: 'Num' a => 'Simple' 'Control.Lens.Iso.Iso' s a  -> a -> s -> (a, s)
--- @
-(<-~) :: Num a => LensLike ((,)a) s t a a -> a -> s -> (a, t)
-l <-~ a = l <%~ subtract a
-{-# INLINE (<-~) #-}
-
--- | Multiply the target of a numerically valued 'Lens' and return the result
---
--- When you do not need the result of the multiplication, ('Control.Lens.Setter.*~') is more
--- flexible.
---
--- @
--- ('<*~') :: 'Num' b => 'Simple' 'Lens' s a -> a -> a -> (s, a)
--- ('<*~') :: 'Num' b => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> a -> (s, a))
--- @
-(<*~) :: Num a => LensLike ((,)a) s t a a -> a -> s -> (a, t)
-l <*~ a = l <%~ (* a)
-{-# INLINE (<*~) #-}
-
--- | Divide the target of a fractionally valued 'Lens' and return the result.
---
--- When you do not need the result of the division, ('Control.Lens.Setter.//~') is more flexible.
---
--- @
--- ('<//~') :: 'Fractional' b => 'Simple' 'Lens' s a -> a -> a -> (s, a)
--- ('<//~') :: 'Fractional' b => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> a -> (s, a))
--- @
-(<//~) :: Fractional a => LensLike ((,)a) s t a a -> a -> s -> (a, t)
-l <//~ a = l <%~ (/ a)
-{-# INLINE (<//~) #-}
-
--- | Raise the target of a numerically valued 'Lens' to a non-negative
--- 'Integral' power and return the result
---
--- When you do not need the result of the division, ('Control.Lens.Setter.^~') is more flexible.
---
--- @
--- ('<^~') :: ('Num' b, 'Integral' e) => 'Simple' 'Lens' s a -> e -> a -> (a, s)
--- ('<^~') :: ('Num' b, 'Integral' e) => 'Simple' 'Control.Lens.Iso.Iso' s a -> e -> a -> (a, s)
--- @
-(<^~) :: (Num a, Integral e) => LensLike ((,)a) s t a a -> e -> s -> (a, t)
-l <^~ e = l <%~ (^ e)
-{-# INLINE (<^~) #-}
-
--- | Raise the target of a fractionally valued 'Lens' to an 'Integral' power
--- and return the result.
---
--- When you do not need the result of the division, ('Control.Lens.Setter.^^~') is more flexible.
---
--- @
--- ('<^^~') :: ('Fractional' b, 'Integral' e) => 'Simple' 'Lens' s a -> e -> a -> (a, s)
--- ('<^^~') :: ('Fractional' b, 'Integral' e) => 'Simple' 'Control.Lens.Iso.Iso' s a -> e -> a -> (a, s)
--- @
-(<^^~) :: (Fractional a, Integral e) => LensLike ((,)a) s t a a -> e -> s -> (a, t)
-l <^^~ e = l <%~ (^^ e)
-{-# INLINE (<^^~) #-}
-
--- | Raise the target of a floating-point valued 'Lens' to an arbitrary power
--- and return the result.
---
--- When you do not need the result of the division, ('Control.Lens.Setter.**~') is more flexible.
---
--- @
--- ('<**~') :: 'Floating' a => 'Simple' 'Lens' s a -> a -> s -> (a, s)
--- ('<**~') :: 'Floating' a => 'Simple' 'Control.Lens.Iso.Iso' s a  -> a -> s -> (a, s)
--- @
-(<**~) :: Floating a => LensLike ((,)a) s t a a -> a -> s -> (a, t)
-l <**~ a = l <%~ (** a)
-{-# INLINE (<**~) #-}
-
--- | Logically '||' a Boolean valued 'Lens' and return the result
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.||~') is more flexible.
---
--- @
--- ('<||~') :: 'Simple' 'Lens' s 'Bool' -> 'Bool' -> s -> ('Bool', s)
--- ('<||~') :: 'Simple' 'Control.Lens.Iso.Iso' s 'Bool'  -> 'Bool' -> s -> ('Bool', s)
--- @
-(<||~) :: LensLike ((,)Bool) s t Bool Bool -> Bool -> s -> (Bool, t)
-l <||~ b = l <%~ (|| b)
-{-# INLINE (<||~) #-}
-
--- | Logically '&&' a Boolean valued 'Lens' and return the result
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.&&~') is more flexible.
---
--- @
--- ('<&&~') :: 'Simple' 'Lens' s 'Bool' -> 'Bool' -> s -> ('Bool', s)
--- ('<&&~') :: 'Simple' 'Control.Lens.Iso.Iso' s 'Bool'  -> 'Bool' -> s -> ('Bool', s)
--- @
-(<&&~) :: LensLike ((,)Bool) s t Bool Bool -> Bool -> s -> (Bool, t)
-l <&&~ b = l <%~ (&& b)
-{-# INLINE (<&&~) #-}
-
--- | Modify the target of a 'Lens', but return the old value.
---
--- When you do not need the result of the addition, ('Control.Lens.Setter.%~') is more flexible.
---
--- @
--- ('<<%~') ::             'Lens' s t a b      -> (a -> b) -> s -> (b, t)
--- ('<<%~') ::             'Control.Lens.Iso.Iso' s t a b       -> (a -> b) -> s -> (b, t)
--- ('<<%~') :: 'Monoid' b => 'Control.Lens.Traversal.Traversal' s t a b -> (a -> b) -> s -> (b, t)
--- @
-(<<%~) :: LensLike ((,)a) s t a b -> (a -> b) -> s -> (a, t)
-l <<%~ f = l $ \a -> (a, f a)
-{-# INLINE (<<%~) #-}
-
--- | Modify the target of a 'Lens', but return the old value.
---
--- When you do not need the old value, ('Control.Lens.Setter.%~') is more flexible.
---
--- @
--- ('<<%~') ::             'Lens' s t a b      -> b -> s -> (a, t)
--- ('<<%~') ::             'Control.Lens.Iso.Iso' s t a b       -> b -> s -> (a, t)
--- ('<<%~') :: 'Monoid' b => 'Control.Lens.Traversal.Traversal' s t a b -> b -> s -> (a, t)
--- @
-(<<.~) :: LensLike ((,)a) s t a b -> b -> s -> (a, t)
-l <<.~ b = l $ \a -> (a, b)
-{-# INLINE (<<.~) #-}
-
--------------------------------------------------------------------------------
--- Setting and Remembering State
--------------------------------------------------------------------------------
-
--- | Modify the target of a 'Lens' into your monad's state by a user supplied
--- function and return the result.
---
--- When applied to a 'Control.Lens.Traversal.Traversal', it this will return a monoidal summary of all of the intermediate
--- results.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.%=') is more flexible.
---
--- @
--- ('<%=') :: 'MonadState' s m             => 'Simple' 'Lens' s a     -> (a -> a) -> m a
--- ('<%=') :: 'MonadState' s m             => 'Simple' 'Control.Lens.Iso.Iso' s a      -> (a -> a) -> m a
--- ('<%=') :: ('MonadState' s m, 'Monoid' a) => 'Simple' 'Traversal' s a -> (a -> a) -> m a
--- @
-(<%=) :: MonadState s m => LensLike ((,)b) s s a b -> (a -> b) -> m b
-l <%= f = l %%= \a -> let b = f a in (b,b)
-{-# INLINE (<%=) #-}
-
-
--- | Add to the target of a numerically valued 'Lens' into your monad's state
--- and return the result.
---
--- When you do not need the result of the addition, ('Control.Lens.Setter.+=') is more
--- flexible.
---
--- @
--- ('<+=') :: ('MonadState' s m, 'Num' a) => 'Simple' 'Lens' s a -> a -> m a
--- ('<+=') :: ('MonadState' s m, 'Num' a) => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> m a
--- @
-(<+=) :: (MonadState s m, Num a) => SimpleLensLike ((,)a) s a -> a -> m a
-l <+= a = l <%= (+ a)
-{-# INLINE (<+=) #-}
-
--- | Subtract from the target of a numerically valued 'Lens' into your monad's
--- state and return the result.
---
--- When you do not need the result of the subtraction, ('Control.Lens.Setter.-=') is more
--- flexible.
---
--- @
--- ('<-=') :: ('MonadState' s m, 'Num' a) => 'Simple' 'Lens' s a -> a -> m a
--- ('<-=') :: ('MonadState' s m, 'Num' a) => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> m a
--- @
-(<-=) :: (MonadState s m, Num a) => SimpleLensLike ((,)a) s a -> a -> m a
-l <-= a = l <%= subtract a
-{-# INLINE (<-=) #-}
-
--- | Multiply the target of a numerically valued 'Lens' into your monad's
--- state and return the result.
---
--- When you do not need the result of the multiplication, ('Control.Lens.Setter.*=') is more
--- flexible.
---
--- @
--- ('<*=') :: ('MonadState' s m, 'Num' a) => 'Simple' 'Lens' s a -> a -> m a
--- ('<*=') :: ('MonadState' s m, 'Num' a) => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> m a
--- @
-(<*=) :: (MonadState s m, Num a) => SimpleLensLike ((,)a) s a -> a -> m a
-l <*= a = l <%= (* a)
-{-# INLINE (<*=) #-}
-
--- | Divide the target of a fractionally valued 'Lens' into your monad's state
--- and return the result.
---
--- When you do not need the result of the division, ('Control.Lens.Setter.//=') is more flexible.
---
--- @
--- ('<//=') :: ('MonadState' s m, 'Fractional' a) => 'Simple' 'Lens' s a -> a -> m a
--- ('<//=') :: ('MonadState' s m, 'Fractional' a) => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> m a
--- @
-(<//=) :: (MonadState s m, Fractional a) => SimpleLensLike ((,)a) s a -> a -> m a
-l <//= a = l <%= (/ a)
-{-# INLINE (<//=) #-}
-
--- | Raise the target of a numerically valued 'Lens' into your monad's state
--- to a non-negative 'Integral' power and return the result.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.**=') is more flexible.
---
--- @
--- ('<^=') :: ('MonadState' s m, 'Num' a, 'Integral' e) => 'Simple' 'Lens' s a -> e -> m a
--- ('<^=') :: ('MonadState' s m, 'Num' a, 'Integral' e) => 'Simple' 'Control.Lens.Iso.Iso' s a -> e -> m a
--- @
-(<^=) :: (MonadState s m, Num a, Integral e) => SimpleLensLike ((,)a) s a -> e -> m a
-l <^= e = l <%= (^ e)
-{-# INLINE (<^=) #-}
-
--- | Raise the target of a fractionally valued 'Lens' into your monad's state
--- to an 'Integral' power and return the result.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.^^=') is more flexible.
---
--- @
--- ('<^^=') :: ('MonadState' s m, 'Fractional' b, 'Integral' e) => 'Simple' 'Lens' s a -> e -> m a
--- ('<^^=') :: ('MonadState' s m, 'Fractional' b, 'Integral' e) => 'Simple' 'Control.Lens.Iso.Iso' s a  -> e -> m a
--- @
-(<^^=) :: (MonadState s m, Fractional a, Integral e) => SimpleLensLike ((,)a) s a -> e -> m a
-l <^^= e = l <%= (^^ e)
-{-# INLINE (<^^=) #-}
-
--- | Raise the target of a floating-point valued 'Lens' into your monad's
--- state to an arbitrary power and return the result.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.**=') is more flexible.
---
--- @
--- ('<**=') :: ('MonadState' s m, 'Floating' a) => 'Simple' 'Lens' s a -> a -> m a
--- ('<**=') :: ('MonadState' s m, 'Floating' a) => 'Simple' 'Control.Lens.Iso.Iso' s a -> a -> m a
--- @
-(<**=) :: (MonadState s m, Floating a) => SimpleLensLike ((,)a) s a -> a -> m a
-l <**= a = l <%= (** a)
-{-# INLINE (<**=) #-}
-
--- | Logically '||' a Boolean valued 'Lens' into your monad's state and return
--- the result.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.||=') is more flexible.
---
--- @
--- ('<||=') :: 'MonadState' s m => 'Simple' 'Lens' s 'Bool' -> 'Bool' -> m 'Bool'
--- ('<||=') :: 'MonadState' s m => 'Simple' 'Control.Lens.Iso.Iso' s 'Bool'  -> 'Bool' -> m 'Bool'
--- @
-(<||=) :: MonadState s m => SimpleLensLike ((,)Bool) s Bool -> Bool -> m Bool
-l <||= b = l <%= (|| b)
-{-# INLINE (<||=) #-}
-
--- | Logically '&&' a Boolean valued 'Lens' into your monad's state and return
--- the result.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.&&=') is more flexible.
---
--- @
--- ('<&&=') :: 'MonadState' s m => 'Simple' 'Lens' s 'Bool' -> 'Bool' -> m 'Bool'
--- ('<&&=') :: 'MonadState' s m => 'Simple' 'Control.Lens.Iso.Iso' s 'Bool'  -> 'Bool' -> m 'Bool'
--- @
-(<&&=) :: MonadState s m => SimpleLensLike ((,)Bool) s Bool -> Bool -> m Bool
-l <&&= b = l <%= (&& b)
-{-# INLINE (<&&=) #-}
-
--- | Modify the target of a 'Lens' into your monad's state by a user supplied
--- function and return the /old/ value that was replaced.
---
--- When applied to a 'Control.Lens.Traversal.Traversal', it this will return a monoidal summary of all of the old values
--- present.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.%=') is more flexible.
---
--- @
--- ('<<%=') :: 'MonadState' s m             => 'Simple' 'Lens' s a     -> (a -> a) -> m a
--- ('<<%=') :: 'MonadState' s m             => 'Simple' 'Control.Lens.Iso.Iso' s a      -> (a -> a) -> m a
--- ('<<%=') :: ('MonadState' s m, 'Monoid' b) => 'Simple' 'Traversal' s a -> (a -> a) -> m a
--- @
-(<<%=) :: MonadState s m => LensLike ((,)a) s s a b -> (a -> b) -> m a
-l <<%= f = l %%= \a -> (a, f a)
-{-# INLINE (<<%=) #-}
-
--- | Modify the target of a 'Lens' into your monad's state by a user supplied
--- function and return the /old/ value that was replaced.
---
--- When applied to a 'Control.Lens.Traversal.Traversal', it this will return a monoidal summary of all of the old values
--- present.
---
--- When you do not need the result of the operation, ('Control.Lens.Setter.%=') is more flexible.
---
--- @
--- ('<<%=') :: 'MonadState' s m             => 'Simple' 'Lens' s a     -> (a -> a) -> m a
--- ('<<%=') :: 'MonadState' s m             => 'Simple' 'Control.Lens.Iso.Iso' s a      -> (a -> a) -> m a
--- ('<<%=') :: ('MonadState' s m, 'Monoid' t) => 'Simple' 'Traversal' s a -> (a -> a) -> m a
--- @
-(<<.=) :: MonadState s m => LensLike ((,)a) s s a b -> b -> m a
-l <<.= b = l %%= \a -> (a,b)
-{-# INLINE (<<.=) #-}
-
--- | Run a monadic action, and set the target of 'Lens' to its result.
---
--- @
--- ('<<~') :: 'MonadState' s m => 'Control.Lens.Iso.Iso' s s a b   -> m b -> m b
--- ('<<~') :: 'MonadState' s m => 'Control.Lens.Type.Lens' s s a b  -> m b -> m b
--- @
---
--- NB: This is limited to taking an actual 'Lens' than admitting a 'Control.Lens.Traversal.Traversal' because
--- there are potential loss of state issues otherwise.
-(<<~) :: MonadState s m => LensLike (Context a b) s s a b -> m b -> m b
-l <<~ mb = do
-  b <- mb
-  modify $ \s -> case l (Context id) s of Context f _ -> f b
-  return b
-{-# INLINE (<<~) #-}
-
--- | 'mappend' a monoidal value onto the end of the target of a 'Lens' and
--- return the result
---
--- When you do not need the result of the operation, ('<>~') is more flexible.
-(<<>~) :: Monoid m => LensLike ((,)m) s t m m -> m -> s -> (m, t)
-l <<>~ m = l <%~ (`mappend` m)
-{-# INLINE (<<>~) #-}
-
--- | 'mappend' a monoidal value onto the end of the target of a 'Lens' into
--- your monad's state and return the result.
---
--- When you do not need the result of the operation, ('<>=') is more flexible.
-(<<>=) :: (MonadState s m, Monoid r) => SimpleLensLike ((,)r) s r -> r -> m r
-l <<>= r = l <%= (`mappend` r)
-{-# INLINE (<<>=) #-}
-
-
--- | Useful for storing lenses in containers.
-newtype ReifiedLens s t a b = ReifyLens { reflectLens :: Lens s t a b }
-
--- | @type 'SimpleReifiedLens' = 'Simple' 'ReifiedLens'@
-type SimpleReifiedLens s a = ReifiedLens s s a a
+type Over' p f s a = Over p f s s a a

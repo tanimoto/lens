@@ -1,5 +1,21 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 {-# LANGUAGE TemplateHaskell #-}
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Main (hunit)
+-- Copyright   :  (C) 2012-14 Edward Kmett
+-- License     :  BSD-style (see the file LICENSE)
+-- Maintainer  :  Edward Kmett <ekmett@gmail.com>
+-- Stability   :  provisional
+-- Portability :  portable
+--
+-- This module provides a simple hunit test suite for lens.
+--
+-- The code attempts to enumerate common use cases rather than give an example
+-- of each available lens function. The tests here merely scratch the surface
+-- of what is possible using the lens package; there are a great many use cases
+-- (and lens functions) that aren't covered.
+-----------------------------------------------------------------------------
 module Main where
 
 import Control.Lens
@@ -11,12 +27,8 @@ import Data.Map as Map
 import Test.Framework.Providers.HUnit
 import Test.Framework.TH
 import Test.Framework
-import Test.HUnit
+import Test.HUnit hiding (test)
 
--- The code attempts to enumerate common use cases rather than give an example
--- of each available lens function. The tests here merely scratch the surface
--- of what is possible using the lens package; there are a great many use cases
--- (and lens functions) that aren't covered.
 
 data Point =
   Point
@@ -42,6 +54,9 @@ data Polygon =
   } deriving (Show, Eq)
 
 makeLenses ''Polygon
+
+data Shape = SBox Box | SPolygon Polygon | SCircle Point Int | SVoid
+makePrisms ''Shape
 
 origin =
   Point { _x = 0, _y = 0 }
@@ -224,13 +239,13 @@ case_read_maybe_state_map_entry =
   runState test trig @?= (Just "Origin", trig)
   where test = use $ labels.at origin
 
-case_read_map_entry = trig^.labels._at origin @?= "Origin"
+case_read_map_entry = trig^.labels.ix origin @?= "Origin"
 
 case_read_state_map_entry = runState test trig @?= ("Origin", trig)
-  where test = use $ labels._at origin
+  where test = use $ labels.ix origin
 
 case_modify_map_entry =
-  (trig & labels._at origin %~ List.map toUpper)
+  (trig & labels.ix origin %~ List.map toUpper)
     @?= trig { _labels = fromList [ (Point { _x = 0, _y = 0 }, "ORIGIN")
                                   , (Point { _x = 4, _y = 7 }, "Peak") ] }
 

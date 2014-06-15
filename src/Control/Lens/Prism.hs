@@ -1,16 +1,13 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+
 #ifdef TRUSTWORTHY
 {-# LANGUAGE Trustworthy #-}
 #endif
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Lens.Prism
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  provisional
@@ -20,340 +17,332 @@
 module Control.Lens.Prism
   (
   -- * Prisms
-    Prism
-  , APrism
+    Prism, Prism'
+  , APrism, APrism'
   -- * Constructing Prisms
-  , Prismatic(..)
-  , Prismoid(..)
-
+  , prism
+  , prism'
   -- * Consuming Prisms
+  , withPrism
   , clonePrism
-  , remit
-  , review, reviews
-  , reuse, reuses
   , outside
   , aside
   , without
-
+  , below
+  , isn't
+  , matching
   -- * Common Prisms
-  , _left
-  , _right
-  , _just
-
-  -- * Simple
-  , SimplePrism
+  , _Left
+  , _Right
+  , _Just
+  , _Nothing
+  , _Void
+  , _Show
+  , only
+  , nearly
+  -- * Prismatic profunctors
+  , Choice(..)
   ) where
 
 import Control.Applicative
-import Control.Arrow
-import Control.Category
-import Control.Monad.Reader as Reader
-import Control.Monad.State as State
-import Control.Lens.Classes
-import Control.Lens.Combinators
-import Control.Lens.Getter
-import Control.Lens.Internal
+import Control.Lens.Internal.Prism
+import Control.Lens.Lens
+import Control.Lens.Review
 import Control.Lens.Type
-import Prelude hiding (id,(.))
+import Control.Monad
+import Data.Functor.Identity
+import Data.Profunctor
+import Data.Profunctor.Rep
+import Data.Traversable
+import Data.Void
+#ifndef SAFE
+import Unsafe.Coerce
+#else
+import Data.Profunctor.Unsafe
+#endif
+
+{-# ANN module "HLint: ignore Use camelCase" #-}
 
 -- $setup
+-- >>> :set -XNoOverloadedStrings
 -- >>> import Control.Lens
 -- >>> import Numeric.Natural
--- >>> :set -XFlexibleContexts -XTypeFamilies
--- >>> let nat :: Simple Prism Integer Natural; nat = prism toInteger $ \i -> if i <= 0 then Left i else Right (fromInteger i)
+-- >>> import Debug.SimpleReflect.Expr
+-- >>> import Debug.SimpleReflect.Vars as Vars hiding (f,g)
 -- >>> let isLeft  (Left  _) = True; isLeft  _ = False
 -- >>> let isRight (Right _) = True; isRight _ = False
+-- >>> let f :: Expr -> Expr; f = Debug.SimpleReflect.Vars.f
+-- >>> let g :: Expr -> Expr; g = Debug.SimpleReflect.Vars.g
 
 ------------------------------------------------------------------------------
 -- Prism Internals
 ------------------------------------------------------------------------------
 
--- | A 'Prism' @l@ is a 0-or-1 target 'Traversal' that can also be turned around with 'remit' to
--- obtain a 'Getter' in the opposite direction.
---
--- There are two laws that a 'Prism' should satisfy:
---
--- First, if I 'remit' or 'review' a value with a 'Prism' and then 'preview' or use ('^?'), I will get it back:
---
--- * @'preview' l ('review' l b) ≡ 'Just' b@
---
--- Second, if you can extract a value @a@ using a Prism @l@ from a value @s@, then the value @s@ is completely described my @l@ and @a@:
---
--- * If @'preview' l s ≡ 'Just' a@ then @'review' l a ≡ s@
---
--- These two laws imply that the 'Traversal' laws hold for every 'Prism' and that we 'traverse' at most 1 element:
---
--- @'Control.Lens.Fold.lengthOf' l x '<=' 1@
---
--- It may help to think of this as a 'Control.Lens.Iso.Iso' that can be partial in one direction.
---
--- Every 'Prism' is a valid 'Traversal'.
---
--- Every 'Control.Lens.Iso.Iso' is a valid 'Prism'.
---
--- For example, you might have a @'Simple' 'Prism' 'Integer' Natural@ allows you to always
--- go from a 'Natural' to an 'Integer', and provide you with tools to check if an 'Integer' is
--- a 'Natural' and/or to edit one if it is.
---
---
--- @
--- 'nat' :: 'Simple' 'Prism' 'Integer' 'Numeric.Natural.Natural'
--- 'nat' = 'prism' 'toInteger' '$' \\ i ->
---    if i '<' 0
---    then 'Left' i
---    else 'Right' ('fromInteger' i)
--- @
---
--- Now we can ask if an 'Integer' is a 'Natural'.
---
--- >>> 5^?nat
--- Just 5
---
--- >>> (-5)^?nat
--- Nothing
---
--- We can update the ones that are:
---
--- >>> (-3,4) & both.nat *~ 2
--- (-3,8)
---
--- And we can then convert from a 'Natural' to an 'Integer'.
---
--- >>> 5 ^. remit nat -- :: Natural
--- 5
---
--- Similarly we can use a 'Prism' to 'traverse' the left half of an 'Either':
---
--- >>> Left "hello" & _left %~ length
--- Left 5
---
--- or to construct an 'Either':
---
--- >>> 5^.remit _left
--- Left 5
---
--- such that if you query it with the 'Prism', you will get your original input back.
---
--- >>> 5^.remit _left ^? _left
--- Just 5
---
--- Another interesting way to think of a 'Prism' is as the categorical dual of a 'Lens'
--- -- a /co/-'Lens', so to speak. This is what permits the construction of 'outside'.
-type Prism s t a b = forall k f. (Prismatic k, Applicative f) => k (a -> f b) (s -> f t)
+-- | If you see this in a signature for a function, the function is expecting a 'Prism'.
+type APrism s t a b = Market a b a (Identity b) -> Market a b s (Identity t)
 
--- | If you see this in a signature for a function, the function is expecting a 'Prism',
--- not some kind of alien invader.
-type APrism s t a b = Overloaded Prismoid Mutator s t a b
+-- | @
+-- type APrism' = 'Simple' 'APrism'
+-- @
+type APrism' s a = APrism s s a a
 
--- | A @'Simple' 'Prism'@.
-type SimplePrism s a = Prism s s a a
+-- | Convert 'APrism' to the pair of functions that characterize it.
+withPrism :: APrism s t a b -> ((b -> t) -> (s -> Either t a) -> r) -> r
+#ifdef SAFE
+withPrism k f = case k (Market Identity Right) of
+  Market bt seta -> f (runIdentity #. bt) (either (Left . runIdentity) Right . seta)
+#else
+withPrism k f = case unsafeCoerce (k (Market Identity Right)) of
+  Market bt seta -> f bt seta
+#endif
+{-# INLINE withPrism #-}
 
 -- | Clone a 'Prism' so that you can reuse the same monomorphically typed 'Prism' for different purposes.
 --
--- See 'cloneLens' and 'cloneTraversal' for examples of why you might want to do this.
+-- See 'Control.Lens.Lens.cloneLens' and 'Control.Lens.Traversal.cloneTraversal' for examples of why you might want to do this.
 clonePrism :: APrism s t a b -> Prism s t a b
-clonePrism Prismoid    = id
-clonePrism (Prism f g) = prism f g
+clonePrism k = withPrism k prism
+{-# INLINE clonePrism #-}
 
 ------------------------------------------------------------------------------
 -- Prism Combinators
 ------------------------------------------------------------------------------
 
+-- | Build a 'Control.Lens.Prism.Prism'.
+--
+-- @'Either' t a@ is used instead of @'Maybe' a@ to permit the types of @s@ and @t@ to differ.
+--
+prism :: (b -> t) -> (s -> Either t a) -> Prism s t a b
+prism bt seta = dimap seta (either pure (fmap bt)) . right'
+{-# INLINE prism #-}
+
+-- | This is usually used to build a 'Prism'', when you have to use an operation like
+-- 'Data.Typeable.cast' which already returns a 'Maybe'.
+prism' :: (b -> s) -> (s -> Maybe a) -> Prism s s a b
+prism' bs sma = prism bs (\s -> maybe (Left s) Right (sma s))
+{-# INLINE prism' #-}
+
 -- | Use a 'Prism' as a kind of first-class pattern.
 --
 -- @'outside' :: 'Prism' s t a b -> 'Lens' (t -> r) (s -> r) (b -> r) (a -> r)@
-outside :: APrism s t a b -> Lens (t -> r) (s -> r) (b -> r) (a -> r)
-outside Prismoid        f tr = f tr
-outside (Prism bt seta) f tr = f (tr.bt) <&> \ar -> either tr ar . seta
 
--- | Use a 'Prism' to work over part of a structure.
-aside :: APrism s t a b -> Prism (e, s) (e, t) (e, a) (e, b)
-aside Prismoid = id
-aside (Prism bt seta) = prism (fmap bt) $ \(e,s) -> case seta s of
-  Left t -> Left (e,t)
-  Right a -> Right (e,a)
+-- TODO: can we make this work with merely Strong?
+outside :: Representable p => APrism s t a b -> Lens (p t r) (p s r) (p b r) (p a r)
+outside k = withPrism k $ \bt seta f ft ->
+  f (lmap bt ft) <&> \fa -> tabulate $ either (rep ft) (rep fa) . seta
+{-# INLINE outside #-}
 
 -- | Given a pair of prisms, project sums.
 --
--- Viewing a 'Prism' as a co-lens, this combinator can be seen to be dual to 'alongside'.
+-- Viewing a 'Prism' as a co-'Lens', this combinator can be seen to be dual to 'Control.Lens.Lens.alongside'.
 without :: APrism s t a b
         -> APrism u v c d
         -> Prism (Either s u) (Either t v) (Either a c) (Either b d)
-without Prismoid Prismoid = id
-without (Prism bt seta) Prismoid = prism (left bt) go where
-  go (Left s) = either (Left . Left) (Right . Left) (seta s)
-  go (Right u) = Right (Right u)
-without Prismoid (Prism dv uevc) = prism (right dv) go where
-  go (Left s) = Right (Left s)
-  go (Right u) = either (Left . Right) (Right . Right) (uevc u)
-without (Prism bt seta) (Prism dv uevc) = prism (bt +++ dv) go where
-  go (Left s) = either (Left . Left) (Right . Left) (seta s)
-  go (Right u) = either (Left . Right) (Right . Right) (uevc u)
+without k =
+  withPrism k         $ \bt seta k' ->
+  withPrism k'        $ \dv uevc    ->
+  prism (bimap bt dv) $ \su ->
+  case su of
+    Left s  -> bimap Left Left (seta s)
+    Right u -> bimap Right Right (uevc u)
+{-# INLINE without #-}
 
--- | Turn a 'Prism' or 'Control.Lens.Iso.Iso' around to build a 'Getter'.
+-- | Use a 'Prism' to work over part of a structure.
 --
--- If you have an 'Control.Lens.Iso.Iso', 'Control.Lens.Iso.from' is a more powerful version of this function
--- that will return an 'Control.Lens.Iso.Iso' instead of a mere 'Getter'.
---
--- >>> 5 ^.remit _left
--- Left 5
---
--- @
--- 'remit' :: 'Prism' s t a b -> 'Getter' b t
--- 'remit' :: 'Iso' s t a b   -> 'Getter' b t
--- @
-remit :: APrism s t a b -> Getter b t
-remit Prismoid     = id
-remit (Prism bt _) = to bt
+aside :: APrism s t a b -> Prism (e, s) (e, t) (e, a) (e, b)
+aside k =
+  withPrism k     $ \bt seta ->
+  prism (fmap bt) $ \(e,s) ->
+  case seta s of
+    Left t  -> Left  (e,t)
+    Right a -> Right (e,a)
+{-# INLINE aside #-}
 
--- | This can be used to turn an 'Control.Lens.Iso.Iso' or 'Prism' around and 'view' a value (or the current environment) through it the other way.
---
--- @'review' ≡ 'view' '.' 'remit'@
---
--- >>> review _left "mustard"
--- Left "mustard"
---
--- Usually 'review' is used in the @(->)@ monad with a 'Simple' 'Prism' or 'Control.Lens.Iso.Iso', in which case it may be useful to think of
--- it as having one of these more restricted type signatures:
---
--- @
--- 'review' :: 'Simple' 'Iso' s a        -> a -> s
--- 'review' :: 'Simple' 'Prism' s a -> a -> s
--- @
---
--- However, when working with a monad transformer stack, it is sometimes useful to be able to 'review' the current environment, in which case one of
--- these more slightly more liberal type signatures may be beneficial to think of it as having:
---
--- @
--- 'review' :: 'MonadReader' a m => 'Simple' 'Iso' s a        -> m s
--- 'review' :: 'MonadReader' a m => 'Simple' 'Prism' s a -> m s
--- @
-review :: MonadReader b m => APrism s t a b -> m t
-review Prismoid     = ask
-review (Prism bt _) = asks bt
-{-# INLINE review #-}
+-- | 'lift' a 'Prism' through a 'Traversable' functor, giving a Prism that matches only if all the elements of the container match the 'Prism'.
+below :: Traversable f => APrism' s a -> Prism' (f s) (f a)
+below k =
+  withPrism k     $ \bt seta ->
+  prism (fmap bt) $ \s ->
+  case traverse seta s of
+    Left _  -> Left s
+    Right t -> Right t
+{-# INLINE below #-}
 
--- | This can be used to turn an 'Control.Lens.Iso.Iso' or 'Prism' around and 'view' a value (or the current environment) through it the other way,
--- applying a function.
+-- | Check to see if this 'Prism' doesn't match.
 --
--- @'reviews' ≡ 'views' '.' 'remit'@
---
--- >>> reviews _left isRight "mustard"
--- False
---
--- Usually this function is used in the @(->)@ monad with a 'Simple' 'Prism' or 'Control.Lens.Iso.Iso', in which case it may be useful to think of
--- it as having one of these more restricted type signatures:
---
--- @
--- 'reviews' :: 'Simple' 'Iso' s a        -> (s -> r) -> a -> r
--- 'reviews' :: 'Simple' 'Prism' s a -> (s -> r) -> a -> r
--- @
---
--- However, when working with a monad transformer stack, it is sometimes useful to be able to 'review' the current environment, in which case one of
--- these more slightly more liberal type signatures may be beneficial to think of it as having:
---
--- @
--- 'reviews' :: 'MonadReader' a m => 'Simple' 'Iso' s a        -> (s -> r) -> m r
--- 'reviews' :: 'MonadReader' a m => 'Simple' 'Prism' s a -> (s -> r) -> m r
--- @
-reviews :: MonadReader b m => APrism s t a b -> (t -> r) -> m r
-reviews Prismoid     f = asks f
-reviews (Prism bt _) f = asks (f . bt)
-{-# INLINE reviews #-}
-
--- | This can be used to turn an 'Control.Lens.Iso.Iso' or 'Prism' around and 'use' a value (or the current environment) through it the other way.
---
--- @'reuse' ≡ 'use' '.' 'remit'@
---
--- >>> evalState (reuse _left) 5
--- Left 5
---
--- @
--- 'reuse' :: 'MonadState' a m => 'Simple' 'Prism' s a -> m s
--- 'reuse' :: 'MonadState' a m => 'Simple' 'Iso' s a        -> m s
--- @
-reuse :: MonadState b m => APrism s t a b -> m t
-reuse Prismoid     = get
-reuse (Prism bt _) = gets bt
-{-# INLINE reuse #-}
-
--- | This can be used to turn an 'Control.Lens.Iso.Iso' or 'Prism' around and 'use' the current state through it the other way,
--- applying a function.
---
--- @'reuses' ≡ 'uses' '.' 'remit'@
---
--- >>> evalState (reuses _left isLeft) (5 :: Int)
+-- >>> isn't _Left (Right 12)
 -- True
 --
--- @
--- 'reuses' :: 'MonadState' a m => 'Simple' 'Prism' s a -> (s -> r) -> m r
--- 'reuses' :: 'MonadState' a m => 'Simple' 'Iso' s a        -> (s -> r) -> m r
--- @
-reuses :: MonadState b m => APrism s t a b -> (t -> r) -> m r
-reuses Prismoid     f = gets f
-reuses (Prism bt _) f = gets (f . bt)
-{-# INLINE reuses #-}
+-- >>> isn't _Left (Left 12)
+-- False
+--
+-- >>> isn't _Empty []
+-- False
+isn't :: APrism s t a b -> s -> Bool
+isn't k s =
+  case matching k s of
+    Left  _ -> True
+    Right _ -> False
+{-# INLINE isn't #-}
+
+-- | Retrieve the value targeted by a 'Prism' or return the
+-- original value while allowing the type to change if it does
+-- not match.
+--
+-- >>> matching _Just (Just 12)
+-- Right 12
+--
+-- >>> matching _Just (Nothing :: Maybe Int) :: Either (Maybe Bool) Int
+-- Left Nothing
+matching :: APrism s t a b -> s -> Either t a
+matching k = withPrism k $ \_ seta -> seta
+{-# INLINE matching #-}
 
 ------------------------------------------------------------------------------
 -- Common Prisms
 ------------------------------------------------------------------------------
 
--- | This prism provides a traversal for tweaking the left-hand value of an 'Either':
+-- | This 'Prism' provides a 'Traversal' for tweaking the 'Left' half of an 'Either':
 --
--- >>> over _left (+1) (Left 2)
+-- >>> over _Left (+1) (Left 2)
 -- Left 3
 --
--- >>> over _left (+1) (Right 2)
+-- >>> over _Left (+1) (Right 2)
 -- Right 2
 --
--- >>> Right 42 ^._left :: String
+-- >>> Right 42 ^._Left :: String
 -- ""
 --
--- >>> Left "hello" ^._left
+-- >>> Left "hello" ^._Left
 -- "hello"
 --
 -- It also can be turned around to obtain the embedding into the 'Left' half of an 'Either':
 --
--- >>> 5^.remit _left
+-- >>> _Left # 5
 -- Left 5
-_left :: Prism (Either a c) (Either b c) a b
-_left = prism Left $ either Right (Left . Right)
-{-# INLINE _left #-}
-
--- | This prism provides a traversal for tweaking the right-hand value of an 'Either':
 --
--- >>> over _right (+1) (Left 2)
+-- >>> 5^.re _Left
+-- Left 5
+_Left :: Prism (Either a c) (Either b c) a b
+_Left = prism Left $ either Right (Left . Right)
+{-# INLINE _Left #-}
+
+-- | This 'Prism' provides a 'Traversal' for tweaking the 'Right' half of an 'Either':
+--
+-- >>> over _Right (+1) (Left 2)
 -- Left 2
 --
--- >>> over _right (+1) (Right 2)
+-- >>> over _Right (+1) (Right 2)
 -- Right 3
 --
--- >>> Right "hello" ^._right
+-- >>> Right "hello" ^._Right
 -- "hello"
 --
--- >>> Left "hello" ^._right :: [Double]
+-- >>> Left "hello" ^._Right :: [Double]
 -- []
 --
 -- It also can be turned around to obtain the embedding into the 'Right' half of an 'Either':
 --
--- >>> 5^.remit _right
+-- >>> _Right # 5
 -- Right 5
 --
--- (Unfortunately the instance for
--- @'Data.Traversable.Traversable' ('Either' c)@ is still missing from base,
--- so this can't just be 'Data.Traversable.traverse'.)
-_right :: Prism (Either c a) (Either c b) a b
-_right = prism Right $ left Left
-{-# INLINE _right #-}
+-- >>> 5^.re _Right
+-- Right 5
+_Right :: Prism (Either c a) (Either c b) a b
+_Right = prism Right $ either (Left . Left) Right
+{-# INLINE _Right #-}
 
--- | This prism provides a traversal for tweaking the target of the value of 'Just' in a 'Maybe'.
+-- | This 'Prism' provides a 'Traversal' for tweaking the target of the value of 'Just' in a 'Maybe'.
 --
--- >>> over _just (+1) (Just 2)
+-- >>> over _Just (+1) (Just 2)
 -- Just 3
 --
--- Unlike 'traverse' this is a 'Prism', and so you can use it to inject as well:
+-- Unlike 'Data.Traversable.traverse' this is a 'Prism', and so you can use it to inject as well:
 --
--- >>> 5^.remit _just
+-- >>> _Just # 5
 -- Just 5
-_just :: Prism (Maybe a) (Maybe b) a b
-_just = prism Just $ maybe (Left Nothing) Right
+--
+-- >>> 5^.re _Just
+-- Just 5
+--
+-- Interestingly,
+--
+-- @
+-- m '^?' '_Just' ≡ m
+-- @
+--
+-- >>> Just x ^? _Just
+-- Just x
+--
+-- >>> Nothing ^? _Just
+-- Nothing
+_Just :: Prism (Maybe a) (Maybe b) a b
+_Just = prism Just $ maybe (Left Nothing) Right
+{-# INLINE _Just #-}
+
+-- | This 'Prism' provides the 'Traversal' of a 'Nothing' in a 'Maybe'.
+--
+-- >>> Nothing ^? _Nothing
+-- Just ()
+--
+-- >>> Just () ^? _Nothing
+-- Nothing
+--
+-- But you can turn it around and use it to construct 'Nothing' as well:
+--
+-- >>> _Nothing # ()
+-- Nothing
+_Nothing :: Prism' (Maybe a) ()
+_Nothing = prism' (const Nothing) $ maybe (Just ()) (const Nothing)
+{-# INLINE _Nothing #-}
+
+-- | 'Void' is a logically uninhabited data type.
+--
+-- This is a 'Prism' that will always fail to match.
+_Void :: Prism s s a Void
+_Void = prism absurd Left
+{-# INLINE _Void #-}
+
+-- | This 'Prism' compares for exact equality with a given value.
+--
+-- >>> only 4 # ()
+-- 4
+--
+-- >>> 5 ^? only 4
+-- Nothing
+only :: Eq a => a -> Prism' a ()
+only a = prism' (\() -> a) $ guard . (a ==)
+{-# INLINE only #-}
+
+
+-- | This 'Prism' compares for approximate equality with a given value and a predicate for testing.
+--
+-- To comply with the 'Prism' laws the arguments you supply to @nearly a p@ are somewhat constrained.
+--
+-- We assume @p x@ holds iff @x ≡ a@. Under that assumption then this is a valid 'Prism'.
+--
+-- This is useful when working with a type where you can test equality for only a subset of its
+-- values, and the prism selects such a value.
+nearly :: a -> (a -> Bool) -> Prism' a ()
+nearly a p = prism' (\() -> a) $ guard . p
+{-# INLINE nearly #-}
+
+-- | This is an improper prism for text formatting based on 'Read' and 'Show'.
+--
+-- This 'Prism' is \"improper\" in the sense that it normalizes the text formatting, but round tripping
+-- is idempotent given sane 'Read'/'Show' instances.
+--
+-- >>> _Show # 2
+-- "2"
+--
+-- >>> "EQ" ^? _Show :: Maybe Ordering
+-- Just EQ
+--
+-- @
+-- '_Show' ≡ 'prism'' 'show' 'readMaybe'
+-- @
+_Show :: (Read a, Show a) => Prism' String a
+_Show = prism show $ \s -> case reads s of
+  [(a,"")] -> Right a
+  _ -> Left s
+{-# INLINE _Show #-}

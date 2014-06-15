@@ -2,7 +2,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Data.IntSet.Lens
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  provisional
@@ -19,7 +19,8 @@ import Control.Lens
 import Data.IntSet as IntSet
 
 -- $setup
--- >>> :m + Data.IntSet.Lens Control.Lens
+-- >>> :set -XNoOverloadedStrings
+-- >>> import Control.Lens
 
 -- | IntSet isn't Foldable, but this 'Fold' can be used to access the members of an 'IntSet'.
 --
@@ -38,22 +39,25 @@ members = folding IntSet.toAscList
 --
 -- >>> over setmapped (+1) (fromList [1,2,3,4])
 -- fromList [2,3,4,5]
-setmapped :: Simple Setter IntSet Int
-setmapped = sets IntSet.map
+setmapped :: IndexPreservingSetter' IntSet Int
+setmapped = setting IntSet.map
 {-# INLINE setmapped #-}
 
 -- | Construct an 'IntSet' from a 'Getter', 'Fold', 'Traversal', 'Lens' or 'Iso'.
+--
+-- >>> setOf folded [1,2,3,4]
+-- fromList [1,2,3,4]
 --
 -- >>> setOf (folded._2) [("hello",1),("world",2),("!!!",3)]
 -- fromList [1,2,3]
 --
 -- @
--- 'setOf' :: 'Getter' s 'Int'           -> s -> 'IntSet'
--- 'setOf' :: 'Fold' s 'Int'             -> s -> 'IntSet'
--- 'setOf' :: 'Simple' 'Iso' s 'Int'       -> s -> 'IntSet'
--- 'setOf' :: 'Simple' 'Lens' s 'Int'      -> s -> 'IntSet'
--- 'setOf' :: 'Simple' 'Traversal' s 'Int' -> s -> 'IntSet'
+-- 'setOf' :: 'Getter' s 'Int'     -> s -> 'IntSet'
+-- 'setOf' :: 'Fold' s 'Int'       -> s -> 'IntSet'
+-- 'setOf' :: 'Iso'' s 'Int'       -> s -> 'IntSet'
+-- 'setOf' :: 'Lens'' s 'Int'      -> s -> 'IntSet'
+-- 'setOf' :: 'Traversal'' s 'Int' -> s -> 'IntSet'
 -- @
-setOf :: Getting IntSet s t Int b -> s -> IntSet
+setOf :: Getting IntSet s Int -> s -> IntSet
 setOf l = views l IntSet.singleton
 {-# INLINE setOf #-}

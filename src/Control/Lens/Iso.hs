@@ -1,21 +1,18 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FunctionalDependencies #-}
 #ifdef TRUSTWORTHY
 {-# LANGUAGE Trustworthy #-}
 #endif
 
 #ifndef MIN_VERSION_bytestring
-#define MIN_VERSION_bytestring(x,y,z)
+#define MIN_VERSION_bytestring(x,y,z) 1
 #endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Lens.Iso
--- Copyright   :  (C) 2012 Edward Kmett
+-- Copyright   :  (C) 2012-14 Edward Kmett
 -- License     :  BSD-style (see the file LICENSE)
 -- Maintainer  :  Edward Kmett <ekmett@gmail.com>
 -- Stability   :  provisional
@@ -25,14 +22,14 @@
 module Control.Lens.Iso
   (
   -- * Isomorphism Lenses
-    Iso
-  , AnIso
+    Iso, Iso'
+  , AnIso, AnIso'
   -- * Isomorphism Construction
-  , Isomorphic(..)
-  , Isoid(..)
+  , iso
   -- * Consuming Isomorphisms
   , from
   , cloneIso
+  , withIso
   -- * Working with isomorphisms
   , au
   , auf
@@ -40,33 +37,90 @@ module Control.Lens.Iso
   , mapping
   -- ** Common Isomorphisms
   , simple
-  , non
+  , non, non'
   , anon
   , enum
   , curried, uncurried
+  , flipped
+  , Swapped(..)
   , Strict(..)
-  -- * Simplicity
-  , SimpleIso
-  -- * Useful Type Families
-  , CoA, CoB
+  , lazy
+  , Reversing(..), reversed
+  , involuted
+  -- ** Uncommon Isomorphisms
+  , magma
+  , imagma
+  , Magma
+  -- ** Contravariant functors
+  , contramapping
+  -- * Profunctors
+  , Profunctor(dimap,rmap,lmap)
+  , dimapping
+  , lmapping
+  , rmapping
+  -- * Bifunctors
+  , bimapping
   ) where
 
-import Control.Category
-import Control.Lens.Classes
-import Control.Lens.Internal
+import Control.Lens.Equality (simple)
+import Control.Lens.Fold
+import Control.Lens.Internal.Context
+import Control.Lens.Internal.Indexed
+import Control.Lens.Internal.Iso as Iso
+import Control.Lens.Internal.Magma
+import Control.Lens.Prism
+import Control.Lens.Review
 import Control.Lens.Type
-import Data.ByteString as StrictB
-import Data.ByteString.Lazy as LazyB
-import Data.Text as StrictT
-import Data.Text.Lazy as LazyT
+import Control.Monad.State.Lazy as Lazy
+import Control.Monad.State.Strict as Strict
+import Control.Monad.Writer.Lazy as Lazy
+import Control.Monad.Writer.Strict as Strict
+import Control.Monad.RWS.Lazy as Lazy
+import Control.Monad.RWS.Strict as Strict
+import Data.ByteString as StrictB hiding (reverse)
+import Data.ByteString.Lazy as LazyB hiding (reverse)
+import Data.Functor.Contravariant
+import Data.Functor.Identity
+import Data.Text as StrictT hiding (reverse)
+import Data.Text.Lazy as LazyT hiding (reverse)
+import Data.Tuple (swap)
 import Data.Maybe
-import Prelude hiding ((.),id)
+import Data.Profunctor
+import Data.Profunctor.Unsafe
+
+#ifdef HLINT
+{-# ANN module "HLint: ignore Use on" #-}
+#endif
 
 -- $setup
+-- >>> :set -XNoOverloadedStrings
 -- >>> import Control.Lens
 -- >>> import Data.Map as Map
 -- >>> import Data.Foldable
 -- >>> import Data.Monoid
+
+----------------------------------------------------------------------------
+-- Isomorphisms
+-----------------------------------------------------------------------------
+
+-- | When you see this as an argument to a function, it expects an 'Iso'.
+type AnIso s t a b = Exchange a b a (Identity b) -> Exchange a b s (Identity t)
+
+-- | A 'Simple' 'AnIso'.
+type AnIso' s a = AnIso s s a a
+
+
+-- | Build a simple isomorphism from a pair of inverse functions.
+--
+-- @
+-- 'Control.Lens.Getter.view' ('iso' f g) ≡ f
+-- 'Control.Lens.Getter.view' ('Control.Lens.Iso.from' ('iso' f g)) ≡ g
+-- 'Control.Lens.Setter.over' ('iso' f g) h ≡ g '.' h '.' f
+-- 'Control.Lens.Setter.over' ('Control.Lens.Iso.from' ('iso' f g)) h ≡ f '.' h '.' g
+-- @
+iso :: (s -> a) -> (b -> t) -> Iso s t a b
+iso sa bt = dimap sa (fmap bt)
+{-# INLINE iso #-}
 
 ----------------------------------------------------------------------------
 -- Consuming Isomorphisms
@@ -74,50 +128,45 @@ import Prelude hiding ((.),id)
 
 -- | Invert an isomorphism.
 --
--- @'from' ('from' l) ≡ l@
+-- @
+-- 'from' ('from' l) ≡ l
+-- @
 from :: AnIso s t a b -> Iso b a t s
-from Isoid       = id
-from (Iso sa bt) = iso bt sa
+from l = withIso l $ \ sa bt -> iso bt sa
 {-# INLINE from #-}
 
--- | Convert from an 'Isomorphism' back to any 'Isomorphic' value.
+-- | Extract the two functions, one from @s -> a@ and
+-- one from @b -> t@ that characterize an 'Iso'.
+withIso :: AnIso s t a b -> ((s -> a) -> (b -> t) -> r) -> r
+withIso ai k = case ai (Exchange id Identity) of
+  Exchange sa bt -> k sa (runIdentity #. bt)
+{-# INLINE withIso #-}
+
+-- | Convert from 'AnIso' back to any 'Iso'.
 --
 -- This is useful when you need to store an isomorphism as a data type inside a container
 -- and later reconstitute it as an overloaded function.
 --
--- See 'cloneLens' or 'Control.Lens.Traversal.cloneTraversal' for more information on why you might want to do this.
+-- See 'Control.Lens.Lens.cloneLens' or 'Control.Lens.Traversal.cloneTraversal' for more information on why you might want to do this.
 cloneIso :: AnIso s t a b -> Iso s t a b
-cloneIso Isoid       = id
-cloneIso (Iso sa bt) = iso sa bt
+cloneIso k = withIso k iso
 {-# INLINE cloneIso #-}
 
 -----------------------------------------------------------------------------
 -- Isomorphisms families as Lenses
 -----------------------------------------------------------------------------
 
--- | Isomorphism families can be composed with other lenses using ('.') and 'id'.
-type Iso s t a b = forall k f. (Isomorphic k, Functor f) => k (a -> f b) (s -> f t)
-
--- | When you see this as an argument to a function, it expects an 'Iso'.
-type AnIso s t a b = Overloaded Isoid Mutator s t a b
-
--- |
--- @type 'SimpleIso' = 'Control.Lens.Type.Simple' 'Iso'@
-type SimpleIso s a = Iso s s a a
-
 -- | Based on 'Control.Lens.Wrapped.ala' from Conor McBride's work on Epigram.
 --
 -- This version is generalized to accept any 'Iso', not just a @newtype@.
 --
--- >>> au (wrapping Sum) foldMap [1,2,3,4]
+-- >>> au (_Wrapping Sum) foldMap [1,2,3,4]
 -- 10
-au :: AnIso s t a b -> ((s -> a) -> e -> b) -> e -> t
-au Isoid f e = f id e
-au (Iso sa bt) f e = bt (f sa e)
+au :: AnIso s t a b -> ((b -> t) -> e -> s) -> e -> a
+au k = withIso k $ \ sa bt f e -> sa (f bt e)
 {-# INLINE au #-}
 
--- |
--- Based on @ala'@ from Conor McBride's work on Epigram.
+-- | Based on @ala'@ from Conor McBride's work on Epigram.
 --
 -- This version is generalized to accept any 'Iso', not just a @newtype@.
 --
@@ -126,21 +175,23 @@ au (Iso sa bt) f e = bt (f sa e)
 -- Mnemonically, the German /auf/ plays a similar role to /à la/, and the combinator
 -- is 'au' with an extra function argument.
 --
--- >>> auf (wrapping Sum) (foldMapOf both) Prelude.length ("hello","world")
+-- >>> auf (_Unwrapping Sum) (foldMapOf both) Prelude.length ("hello","world")
 -- 10
-auf :: AnIso s t a b -> ((r -> a) -> e -> b) -> (r -> s) -> e -> t
-auf Isoid       f g e = f g e
-auf (Iso sa bt) f g e = bt (f (sa . g) e)
+auf :: Profunctor p => AnIso s t a b -> (p r a -> e -> b) -> p r s -> e -> t
+auf k = withIso k $ \ sa bt f g e -> bt (f (rmap sa g) e)
 {-# INLINE auf #-}
 
--- | The opposite of working 'over' a Setter is working 'under' an Isomorphism.
+-- | The opposite of working 'Control.Lens.Setter.over' a 'Setter' is working 'under' an isomorphism.
 --
--- @'under' ≡ 'over' '.' 'from'@
+-- @
+-- 'under' ≡ 'Control.Lens.Setter.over' '.' 'from'
+-- @
 --
--- @'under' :: 'Iso' s t a b -> (s -> t) -> a -> b@
+-- @
+-- 'under' :: 'Iso' s t a b -> (t -> s) -> b -> a
+-- @
 under :: AnIso s t a b -> (t -> s) -> b -> a
-under Isoid       ts b = ts b
-under (Iso sa bt) ts b = sa (ts (bt b))
+under k = withIso k $ \ sa bt ts -> sa . ts . bt
 {-# INLINE under #-}
 
 -----------------------------------------------------------------------------
@@ -160,30 +211,25 @@ under (Iso sa bt) ts b = sa (ts (bt b))
 -- 'Enum' instances for 'Double', and 'Float' that exist solely for
 -- @[1.0 .. 4.0]@ sugar and the instances for those and 'Integer' don't
 -- cover all values in their range.
-enum :: Enum a => Simple Iso Int a
+enum :: Enum a => Iso' Int a
 enum = iso toEnum fromEnum
 {-# INLINE enum #-}
 
--- | This can be used to lift any 'SimpleIso' into an arbitrary functor.
-mapping :: Functor f => AnIso s t a b -> Iso (f s) (f t) (f a) (f b)
-mapping Isoid       = id
-mapping (Iso sa bt) = iso (fmap sa) (fmap bt)
+-- | This can be used to lift any 'Iso' into an arbitrary 'Functor'.
+mapping :: (Functor f, Functor g) => AnIso s t a b -> Iso (f s) (g t) (f a) (g b)
+mapping k = withIso k $ \ sa bt -> iso (fmap sa) (fmap bt)
 {-# INLINE mapping #-}
 
--- | Composition with this isomorphism is occasionally useful when your 'Lens',
--- 'Control.Lens.Traversal.Traversal' or 'Iso' has a constraint on an unused
--- argument to force that argument to agree with the
--- type of a used argument and avoid @ScopedTypeVariables@ or other ugliness.
-simple :: Simple Iso a a
-simple = id
-{-# INLINE simple #-}
-
--- | If @v@ is an element of a type @a@, and @a'@ is @a@ sans the element @v@, then @non v@ is an isomorphism from
--- @Maybe a'@ to @a@.
+-- | If @v@ is an element of a type @a@, and @a'@ is @a@ sans the element @v@, then @'non' v@ is an isomorphism from
+-- @'Maybe' a'@ to @a@.
 --
--- Keep in mind this is only a real isomorphism if you treat the domain as being @'Maybe' (a sans v)@
+-- @
+-- 'non' ≡ 'non'' '.' 'only'
+-- @
 --
--- This is practically quite useful when you want to have a map where all the entries should have non-zero values.
+-- Keep in mind this is only a real isomorphism if you treat the domain as being @'Maybe' (a sans v)@.
+--
+-- This is practically quite useful when you want to have a 'Data.Map.Map' where all the entries should have non-zero values.
 --
 -- >>> Map.fromList [("hello",1)] & at "hello" . non 0 +~ 2
 -- fromList [("hello",3)]
@@ -199,30 +245,54 @@ simple = id
 --
 -- This combinator is also particularly useful when working with nested maps.
 --
--- /e.g./ When you want to create the nested map when it is missing:
+-- /e.g./ When you want to create the nested 'Data.Map.Map' when it is missing:
 --
 -- >>> Map.empty & at "hello" . non Map.empty . at "world" ?~ "!!!"
 -- fromList [("hello",fromList [("world","!!!")])]
 --
--- and when have deleting the last entry from the nested map mean that we
+-- and when have deleting the last entry from the nested 'Data.Map.Map' mean that we
 -- should delete its entry from the surrounding one:
 --
 -- >>> fromList [("hello",fromList [("world","!!!")])] & at "hello" . non Map.empty . at "world" .~ Nothing
 -- fromList []
-non :: Eq a => a -> Simple Iso (Maybe a) a
-non a = anon a (a==)
+--
+-- It can also be used in reverse to exclude a given value:
+--
+-- >>> non 0 # rem 10 4
+-- Just 2
+--
+-- >>> non 0 # rem 10 5
+-- Nothing
+non :: Eq a => a -> Iso' (Maybe a) a
+non = non' . only
 {-# INLINE non #-}
+
+-- | @'non'' p@ generalizes @'non' (p # ())@ to take any unit 'Prism'
+--
+-- This function generates an isomorphism between @'Maybe' (a | 'isn't' p a)@ and @a@.
+--
+-- >>> Map.singleton "hello" Map.empty & at "hello" . non' _Empty . at "world" ?~ "!!!"
+-- fromList [("hello",fromList [("world","!!!")])]
+--
+-- >>> fromList [("hello",fromList [("world","!!!")])] & at "hello" . non' _Empty . at "world" .~ Nothing
+-- fromList []
+non' :: APrism' a () -> Iso' (Maybe a) a
+non' p = iso (fromMaybe def) go where
+  def                           = review (clonePrism p) ()
+  go b | has (clonePrism p) b   = Nothing
+       | otherwise              = Just b
+{-# INLINE non' #-}
 
 -- | @'anon' a p@ generalizes @'non' a@ to take any value and a predicate.
 --
--- This function assumes that @p a@ holds @True@ and generates an isomorphism between @'Maybe' (a | not (p a))@ and @a@
+-- This function assumes that @p a@ holds @'True'@ and generates an isomorphism between @'Maybe' (a | 'not' (p a))@ and @a@.
 --
 -- >>> Map.empty & at "hello" . anon Map.empty Map.null . at "world" ?~ "!!!"
 -- fromList [("hello",fromList [("world","!!!")])]
 --
 -- >>> fromList [("hello",fromList [("world","!!!")])] & at "hello" . anon Map.empty Map.null . at "world" .~ Nothing
 -- fromList []
-anon :: a -> (a -> Bool) -> Simple Iso (Maybe a) a
+anon :: a -> (a -> Bool) -> Iso' (Maybe a) a
 anon a p = iso (fromMaybe a) go where
   go b | p b       = Nothing
        | otherwise = Just b
@@ -230,32 +300,69 @@ anon a p = iso (fromMaybe a) go where
 
 -- | The canonical isomorphism for currying and uncurrying a function.
 --
--- >>> :t fst^.curried
--- fst^.curried :: a -> b -> a
+-- @
+-- 'curried' = 'iso' 'curry' 'uncurry'
+-- @
 --
--- @'curried' = 'iso' 'curry' 'uncurry'@
+-- >>> (fst^.curried) 3 4
+-- 3
+--
+-- >>> view curried fst 3 4
+-- 3
 curried :: Iso ((a,b) -> c) ((d,e) -> f) (a -> b -> c) (d -> e -> f)
 curried = iso curry uncurry
 {-# INLINE curried #-}
 
 -- | The canonical isomorphism for uncurrying and currying a function.
 --
--- >>> :t flip (,)^.uncurried
--- flip (,)^.uncurried :: (b, a) -> (a, b)
+-- @
+-- 'uncurried' = 'iso' 'uncurry' 'curry'
+-- @
 --
--- @'uncurried' = 'iso' 'uncurry' 'curry'@
+-- @
+-- 'uncurried' = 'from' 'curried'
+-- @
 --
--- @'uncurried' = 'from' 'curried'@
+-- >>> ((+)^.uncurried) (1,2)
+-- 3
 uncurried :: Iso (a -> b -> c) (d -> e -> f) ((a,b) -> c) ((d,e) -> f)
 uncurried = iso uncurry curry
 {-# INLINE uncurried #-}
 
+-- | The isomorphism for flipping a function.
+--
+-- >>>((,)^.flipped) 1 2
+-- (2,1)
+flipped :: Iso (a -> b -> c) (a' -> b' -> c') (b -> a -> c) (b' -> a' -> c')
+flipped = iso flip flip
+{-# INLINE flipped #-}
+
+-- | This class provides for symmetric bifunctors.
+class Bifunctor p => Swapped p where
+  -- |
+  -- @
+  -- 'swapped' '.' 'swapped' ≡ 'id'
+  -- 'first' f '.' 'swapped' = 'swapped' '.' 'second' f
+  -- 'second' g '.' 'swapped' = 'swapped' '.' 'first' g
+  -- 'bimap' f g '.' 'swapped' = 'swapped' '.' 'bimap' g f
+  -- @
+  --
+  -- >>> (1,2)^.swapped
+  -- (2,1)
+  swapped :: Iso (p a b) (p c d) (p b a) (p d c)
+
+instance Swapped (,) where
+  swapped = iso swap swap
+
+instance Swapped Either where
+  swapped = iso (either Right Left) (either Right Left)
+
 -- | Ad hoc conversion between \"strict\" and \"lazy\" versions of a structure,
 -- such as 'StrictT.Text' or 'StrictB.ByteString'.
-class Strict s t a b | s -> a, a -> s, b -> t, t -> b, s b -> a t, a t -> s b where
-  strict :: Iso s t a b
+class Strict lazy strict | lazy -> strict, strict -> lazy where
+  strict :: Iso' lazy strict
 
-instance Strict LazyB.ByteString LazyB.ByteString StrictB.ByteString StrictB.ByteString where
+instance Strict LazyB.ByteString StrictB.ByteString where
 #if MIN_VERSION_bytestring(0,10,0)
   strict = iso LazyB.toStrict LazyB.fromStrict
 #else
@@ -263,6 +370,137 @@ instance Strict LazyB.ByteString LazyB.ByteString StrictB.ByteString StrictB.Byt
 #endif
   {-# INLINE strict #-}
 
-instance Strict LazyT.Text LazyT.Text StrictT.Text StrictT.Text where
+instance Strict LazyT.Text StrictT.Text where
   strict = iso LazyT.toStrict LazyT.fromStrict
   {-# INLINE strict #-}
+
+instance Strict (Lazy.StateT s m a) (Strict.StateT s m a) where
+  strict = iso (Strict.StateT . Lazy.runStateT) (Lazy.StateT . Strict.runStateT)
+  {-# INLINE strict #-}
+
+instance Strict (Lazy.WriterT w m a) (Strict.WriterT w m a) where
+  strict = iso (Strict.WriterT . Lazy.runWriterT) (Lazy.WriterT . Strict.runWriterT)
+  {-# INLINE strict #-}
+
+instance Strict (Lazy.RWST r w s m a) (Strict.RWST r w s m a) where
+  strict = iso (Strict.RWST . Lazy.runRWST) (Lazy.RWST . Strict.runRWST)
+  {-# INLINE strict #-}
+
+-- | An 'Iso' between the strict variant of a structure and its lazy
+-- counterpart.
+--
+-- @
+-- 'lazy' = 'from' 'strict'
+-- @
+--
+-- See <http://hackage.haskell.org/package/strict-base-types> for an example
+-- use.
+lazy :: Strict lazy strict => Iso' strict lazy
+lazy = from strict
+
+-- | An 'Iso' between a list, 'ByteString', 'Text' fragment, etc. and its reversal.
+--
+-- >>> "live" ^. reversed
+-- "evil"
+--
+-- >>> "live" & reversed %~ ('d':)
+-- "lived"
+reversed :: Reversing a => Iso' a a
+reversed = involuted Iso.reversing
+
+-- | Given a function that is its own inverse, this gives you an 'Iso' using it in both directions.
+--
+-- @
+-- 'involuted' ≡ 'Control.Monad.join' 'iso'
+-- @
+--
+-- >>> "live" ^. involuted reverse
+-- "evil"
+--
+-- >>> "live" & involuted reverse %~ ('d':)
+-- "lived"
+involuted :: (a -> a) -> Iso' a a
+involuted a = iso a a
+{-# INLINE involuted #-}
+
+------------------------------------------------------------------------------
+-- Magma
+------------------------------------------------------------------------------
+
+-- | This isomorphism can be used to inspect a 'Traversal' to see how it associates
+-- the structure and it can also be used to bake the 'Traversal' into a 'Magma' so
+-- that you can traverse over it multiple times.
+magma :: LensLike (Mafic a b) s t a b -> Iso s u (Magma Int t b a) (Magma j u c c)
+magma l = iso (runMafic `rmap` l sell) runMagma
+{-# INLINE magma #-}
+
+-- | This isomorphism can be used to inspect an 'IndexedTraversal' to see how it associates
+-- the structure and it can also be used to bake the 'IndexedTraversal' into a 'Magma' so
+-- that you can traverse over it multiple times with access to the original indices.
+imagma :: Over (Indexed i) (Molten i a b) s t a b -> Iso s t' (Magma i t b a) (Magma j t' c c)
+imagma l = iso (runMolten #. l sell) (iextract .# Molten)
+{-# INLINE imagma #-}
+
+------------------------------------------------------------------------------
+-- Contravariant
+------------------------------------------------------------------------------
+
+-- | Lift an 'Iso' into a 'Contravariant' functor.
+--
+-- @
+-- contramapping :: 'Contravariant' f => 'Iso' s t a b -> 'Iso' (f a) (f b) (f s) (f t)
+-- contramapping :: 'Contravariant' f => 'Iso'' s a -> 'Iso'' (f a) (f s)
+-- @
+contramapping :: Contravariant f => AnIso s t a b -> Iso (f a) (f b) (f s) (f t)
+contramapping f = withIso f $ \ sa bt -> iso (contramap sa) (contramap bt)
+{-# INLINE contramapping #-}
+
+------------------------------------------------------------------------------
+-- Profunctor
+------------------------------------------------------------------------------
+
+-- | Lift two 'Iso's into both arguments of a 'Profunctor' simultaneously.
+--
+-- @
+-- dimapping :: 'Profunctor' p => 'Iso' s t a b -> 'Iso' s' t' a' b' -> 'Iso' (p a s') (p b t') (p s a') (p t b')
+-- dimapping :: 'Profunctor' p => 'Iso'' s a -> 'Iso'' s' a' -> 'Iso'' (p a s') (p s a')
+-- @
+dimapping :: (Profunctor p, Profunctor q) => AnIso s t a b -> AnIso s' t' a' b' -> Iso (p a s') (q b t') (p s a') (q t b')
+dimapping f g = withIso f $ \ sa bt -> withIso g $ \ s'a' b't' ->
+  iso (dimap sa s'a') (dimap bt b't')
+{-# INLINE dimapping #-}
+
+-- | Lift an 'Iso' contravariantly into the left argument of a 'Profunctor'.
+--
+-- @
+-- lmapping :: 'Profunctor' p => 'Iso' s t a b -> 'Iso' (p a x) (p b y) (p s x) (p t y)
+-- lmapping :: 'Profunctor' p => 'Iso'' s a -> 'Iso'' (p a x) (p s x)
+-- @
+lmapping :: (Profunctor p, Profunctor q) => AnIso s t a b -> Iso (p a x) (q b y) (p s x) (q t y)
+lmapping f = withIso f $ \ sa bt -> iso (lmap sa) (lmap bt)
+{-# INLINE lmapping #-}
+
+-- | Lift an 'Iso' covariantly into the right argument of a 'Profunctor'.
+--
+-- @
+-- rmapping :: 'Profunctor' p => 'Iso' s t a b -> 'Iso' (p x s) (p y t) (p x a) (p y b)
+-- rmapping :: 'Profunctor' p => 'Iso'' s a -> 'Iso'' (p x s) (p x a)
+-- @
+rmapping :: (Profunctor p, Profunctor q) => AnIso s t a b -> Iso (p x s) (q y t) (p x a) (q y b)
+rmapping g = withIso g $ \ sa bt -> iso (rmap sa) (rmap bt)
+{-# INLINE rmapping #-}
+
+------------------------------------------------------------------------------
+-- Bifunctor
+------------------------------------------------------------------------------
+
+-- | Lift two 'Iso's into both arguments of a 'Bifunctor'.
+--
+-- @
+-- bimapping :: 'Profunctor' p => 'Iso' s t a b -> 'Iso' s' t' a' b' -> 'Iso' (p s s') (p t t') (p a a') (p b b')
+-- bimapping :: 'Profunctor' p => 'Iso'' s a -> 'Iso'' s' a' -> 'Iso'' (p s s') (p a a')
+-- @
+bimapping :: (Bifunctor f, Bifunctor g) => AnIso s t a b -> AnIso s' t' a' b' -> Iso (f s s') (g t t') (f a a') (g b b')
+bimapping f g = withIso f $ \ sa bt -> withIso g $ \s'a' b't' ->
+  iso (bimap sa s'a') (bimap bt b't')
+{-# INLINE bimapping #-}
